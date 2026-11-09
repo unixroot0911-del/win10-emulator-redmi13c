@@ -99,7 +99,16 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
 
         print("Microsoft Windows [Version 10.0.19045.0]\n(c) Win10 Emulator - custom x86 interpreter. Type HELP.\n\n");
         updatePrompt();
-        if (arg != null && !arg.isEmpty()) runProgram(arg, "");
+        if (arg != null && !arg.isEmpty()) {
+            File target = d.vfs.resolve(arg);
+            if (target.isDirectory()) { cwd = d.vfs.toWin(target); updatePrompt(); }
+            else if (target.isFile()) {
+                // like double-clicking an .exe: run it with its own folder as the working directory
+                cwd = d.vfs.toWin(target.getParentFile());
+                print("Starting " + target.getName() + " in " + cwd + "\n\n");
+                runProgram(target.getName(), "");
+            } else print("Not found: " + arg + "\n");
+        }
     }
 
     private void updatePrompt() { prompt.setText(proc != null ? "" : cwd + ">"); }
@@ -268,6 +277,8 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
         try { data = Vfs.readAll(exe); } catch (java.io.IOException e) { print("Cannot read file.\n"); return; }
         stdin.clear();
         final Emulator em = new Emulator(console, d.vfs.root);
+        em.setCwd(cwd);
+        em.setExeDir(exe.getParentFile());
         try {
             em.load(data, d.vfs.toWin(exe), a);
         } catch (RuntimeException e) {

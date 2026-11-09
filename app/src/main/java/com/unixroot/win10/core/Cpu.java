@@ -16,13 +16,15 @@ public final class Cpu {
     public volatile boolean halted;
     public long steps;
 
-    private int opsz, seg, rep;
-    private int mMod, mReg, mRm, ea;
+    int opsz, seg, rep;
+    int mMod, mReg, mRm, ea;
+    public final Fpu fpu = new Fpu(this);
+    public final Sse sse = new Sse(this);
 
     public Cpu(Memory mem) { this.mem = mem; }
 
     // ---------- fetch / stack ----------
-    private int fetch8() { return mem.r8(eip++); }
+    int fetch8() { return mem.r8(eip++); }
     private int fetch16() { int v = mem.r16(eip); eip += 2; return v; }
     private int fetch32() { int v = mem.r32(eip); eip += 4; return v; }
     public void push(int v) { r[ESP] -= 4; mem.w32(r[ESP], v); }
@@ -48,7 +50,7 @@ public final class Cpu {
         else r[i - 4] = (r[i - 4] & ~0xFF00) | ((v & 0xFF) << 8);
     }
 
-    private void modrm() {
+    void modrm() {
         int m = fetch8();
         mMod = m >> 6; mReg = (m >> 3) & 7; mRm = m & 7;
         if (mMod == 3) return;
@@ -147,7 +149,9 @@ public final class Cpu {
             case 7: {
                 int s = sx(v, sz), c = Math.min(cnt, 31);
                 cf = ((s >> (c - 1)) & 1) != 0; res = (s >> c) & m; of = false; szp(res, sz); return res; }
-            default: throw new EmuException("rcl/rcr not supported");
+            case 2: { int n = cnt % (bits + 1); for (int i = 0; i < n; i++) { boolean nc = (v & sg) != 0; v = ((v << 1) | (cf ? 1 : 0)) & m; cf = nc; } of = ((v & sg) != 0) != cf; return v; }
+            case 3: { int n = cnt % (bits + 1); for (int i = 0; i < n; i++) { boolean nc = (v & 1) != 0; v = ((v >>> 1) | (cf ? sg : 0)) & m; cf = nc; } of = ((v & sg) != 0) != ((v & (sg >>> 1)) != 0); return v; }
+            default: throw new EmuException("bad shift op");
         }
     }
 
@@ -303,6 +307,19 @@ public final class Cpu {
         if (op >= 0xB8 && op <= 0xBF) { setReg(op & 7, sz, sz == 2 ? fetch16() : fetch32()); return; }
         switch (op) {
             case 0x0F: exec0F(start); return;
+            case 0xD8: case 0xD9: case 0xDA: case 0xDB: case 0xDC: case 0xDD: case 0xDE: case 0xDF: fpu.exec(op); return;
+            case 0x9B: return;
+            case 0x60: { int t = r[ESP]; push(r[EAX]); push(r[ECX]); push(r[EDX]); push(r[EBX]); push(t); push(r[EBP]); push(r[ESI]); push(r[EDI]); return; }
+            case 0x61: { r[EDI] = pop(); r[ESI] = pop(); r[EBP] = pop(); pop(); r[EBX] = pop(); r[EDX] = pop(); r[ECX] = pop(); r[EAX] = pop(); return; }
+            case 0x9E: { int ah = (r[EAX] >> 8) & 0xFF; cf = (ah & 1) != 0; pf = (ah & 4) != 0; af = (ah & 16) != 0; zf = (ah & 64) != 0; sf = (ah & 128) != 0; return; }
+            case 0x9F: setReg(4, 1, (cf ? 1 : 0) | 2 | (pf ? 4 : 0) | (af ? 16 : 0) | (zf ? 64 : 0) | (sf ? 128 : 0)); return;
+            case 0xD7: setReg(0, 1, mem.r8(r[EBX] + (r[EAX] & 0xFF))); return;
+            case 0xC8: { int size = fetch16(); fetch8(); push(r[EBP]); r[EBP] = r[ESP]; r[ESP] -= size; return; }
+            case 0xE0: { int d = (byte) fetch8(); if (--r[ECX] != 0 && !zf) eip += d; return; }
+            case 0xE1: { int d = (byte) fetch8(); if (--r[ECX] != 0 && zf) eip += d; return; }
+            case 0x8C: modrm(); setRM(2, mReg == 4 ? 0x3B : mReg == 5 ? 0x2B : mReg == 1 ? 0x1B : 0x23); return;
+            case 0x8E: modrm(); return;
+            case 0xCD: { int n = fetch8(); throw new EmuException("Software interrupt int " + Integer.toHexString(n) + " is not supported"); }
             case 0x68: push(fetch32()); return;
             case 0x6A: push((byte) fetch8()); return;
             case 0x69: case 0x6B: {
@@ -374,6 +391,20 @@ public final class Cpu {
         }
     }
 
+    private void bitop(int kind, int off, boolean regOffset, int sz) {
+        int bits = sz * 8, a = 0, v, idx;
+        if (mMod == 3) { idx = off & (bits - 1); v = getReg(mRm, sz); }
+        else {
+            a = ea;
+            if (regOffset) { a += (off >> 5) * 4; idx = off & 31; } else idx = off & (bits - 1);
+            v = sz == 4 ? mem.r32(a) : mem.r16(a);
+        }
+        cf = ((v >>> idx) & 1) != 0;
+        if (kind == 0) return;
+        v = kind == 1 ? v | (1 << idx) : kind == 2 ? v & ~(1 << idx) : v ^ (1 << idx);
+        if (mMod == 3) setReg(mRm, sz, v); else if (sz == 4) mem.w32(a, v); else mem.w16(a, v);
+    }
+
     private void imul2(int a, int b, int sz) {
         if (sz == 4) { long t = (long) a * (long) b; setReg(mReg, 4, (int) t); cf = of = t != (int) t; }
         else { int t = (short) a * (short) b; setReg(mReg, 2, t); cf = of = t != (short) t; }
@@ -386,10 +417,56 @@ public final class Cpu {
         if (op >= 0x90 && op <= 0x9F) { modrm(); setRM(1, cc(op & 15) ? 1 : 0); return; }
         if (op >= 0x40 && op <= 0x4F) { modrm(); int v = getRM(sz); if (cc(op & 15)) setReg(mReg, sz, v); return; }
         if (op >= 0xC8 && op <= 0xCF) { r[op & 7] = Integer.reverseBytes(r[op & 7]); return; }
+        int pfx = rep == 1 ? 0xF3 : rep == 2 ? 0xF2 : opsz == 2 ? 0x66 : 0;
         switch (op) {
+            case 0x0B: throw new EmuException(String.format("Illegal instruction (ud2) at %08X", start));
+            case 0x0D: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: case 0x1E: modrm(); return;
+            case 0x77: return;
+            case 0xAE: {
+                modrm();
+                if (mMod == 3) return; // lfence/mfence/sfence
+                switch (mReg) {
+                    case 2: sse.mxcsr = mem.r32(ea); return;
+                    case 3: mem.w32(ea, sse.mxcsr); return;
+                    case 0: case 1: return; // fxsave/fxrstor (state not preserved)
+                    default: return;
+                }
+            }
+            case 0xA3: case 0xAB: case 0xB3: case 0xBB: { modrm(); bitop((op >> 3) & 3, getReg(mReg, sz), true, sz); return; }
+            case 0xBA: { modrm(); int imm = fetch8(); int k = mReg - 4; if (k < 0) unsupported(op, start); bitop(k, imm, false, sz); return; }
+            case 0xBC: case 0xBD: {
+                modrm(); int v = getRM(sz);
+                if (rep == 1) {
+                    int res = v == 0 ? sz * 8 : (op == 0xBC ? Integer.numberOfTrailingZeros(v) : Integer.numberOfLeadingZeros(v) - (32 - sz * 8));
+                    cf = v == 0; zf = res == 0; setReg(mReg, sz, res);
+                } else if (v == 0) zf = true;
+                else { zf = false; setReg(mReg, sz, op == 0xBC ? Integer.numberOfTrailingZeros(v) : 31 - Integer.numberOfLeadingZeros(v)); }
+                return; }
+            case 0xA4: case 0xA5: case 0xAC: case 0xAD: {
+                modrm(); int cnt = ((op & 1) == 0 ? fetch8() : r[ECX]) & 31;
+                if (cnt == 0) return;
+                if (sz != 4) throw new EmuException("16-bit shld/shrd not supported");
+                int dst = getRM(4), src = getReg(mReg, 4), res;
+                if (op < 0xA8) { res = (dst << cnt) | (src >>> (32 - cnt)); cf = ((dst >>> (32 - cnt)) & 1) != 0; }
+                else { res = (dst >>> cnt) | (src << (32 - cnt)); cf = ((dst >>> (cnt - 1)) & 1) != 0; }
+                of = ((res ^ dst) & 0x80000000) != 0; szp(res, 4); setRM(4, res); return; }
+            case 0xB0: { modrm(); int d = getRM(1); alu(7, getReg(0, 1), d, 1); if (zf) setRM(1, getReg(mReg, 1)); else setReg(0, 1, d); return; }
+            case 0xC0: { modrm(); int d = getRM(1), s = getReg(mReg, 1); int res = alu(0, d, s, 1); setReg(mReg, 1, d); setRM(1, res); return; }
+            case 0xC7: {
+                modrm();
+                if (mReg != 1) unsupported(op, start);
+                long m = mem.r64(ea), ed = ((long) r[EDX] << 32) | (r[EAX] & 0xFFFFFFFFL);
+                if (m == ed) { mem.w64(ea, ((long) r[ECX] << 32) | (r[EBX] & 0xFFFFFFFFL)); zf = true; }
+                else { r[EAX] = (int) m; r[EDX] = (int) (m >>> 32); zf = false; }
+                return; }
             case 0x1F: modrm(); return;
             case 0x31: { long t = System.nanoTime(); r[EAX] = (int) t; r[EDX] = (int) (t >>> 32); return; }
-            case 0xA2: r[EAX] = 0; r[EBX] = 0; r[ECX] = 0; r[EDX] = 0; return;
+            case 0xA2: {
+                int leaf = r[EAX];
+                if (leaf == 0) { r[EAX] = 1; r[EBX] = 0x756e6547; r[EDX] = 0x49656e69; r[ECX] = 0x6c65746e; }
+                else if (leaf == 1) { r[EAX] = 0x000306A9; r[EBX] = 0; r[ECX] = 0; r[EDX] = (1 << 0) | (1 << 4) | (1 << 8) | (1 << 15) | (1 << 25) | (1 << 26); }
+                else { r[EAX] = r[EBX] = r[ECX] = r[EDX] = 0; }
+                return; }
             case 0xAF: modrm(); imul2(getReg(mReg, sz), getRM(sz), sz); return;
             case 0xB6: modrm(); setReg(mReg, sz, getRM(1) & 0xFF); return;
             case 0xB7: modrm(); setReg(mReg, sz, getRM(2) & 0xFFFF); return;
@@ -398,7 +475,9 @@ public final class Cpu {
             case 0xB1: { modrm(); int d = getRM(sz); alu(7, getReg(0, sz), d, sz);
                 if (zf) setRM(sz, getReg(mReg, sz)); else setReg(0, sz, d); return; }
             case 0xC1: { modrm(); int d = getRM(sz), s = getReg(mReg, sz); int res = alu(0, d, s, sz); setReg(mReg, sz, d); setRM(sz, res); return; }
-            default: throw new EmuException(String.format("Unsupported opcode 0F %02X at %08X", op, start));
+            default:
+                if (sse.exec(op, pfx)) return;
+                throw new EmuException(String.format("Unsupported opcode 0F %02X at %08X", op, start));
         }
     }
 }

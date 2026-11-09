@@ -42,7 +42,8 @@ final class FilesApp extends LinearLayout implements Desktop.FsListener {
         bar.setBackgroundColor(0xFF2D2D2D);
         bar.addView(btn("\u2B06 Up", new OnClickListener() { @Override public void onClick(View v) { up(); } }));
         bar.addView(btn("+ Folder", new OnClickListener() { @Override public void onClick(View v) { newFolder(); } }));
-        bar.addView(btn("Import", new OnClickListener() { @Override public void onClick(View v) { d.act.pickFile(); } }));
+        bar.addView(btn("Import files", new OnClickListener() { @Override public void onClick(View v) { d.act.pickFile(); } }));
+        bar.addView(btn("Import folder", new OnClickListener() { @Override public void onClick(View v) { d.act.pickFolder(); } }));
         bar.addView(btn("\u21BB", new OnClickListener() { @Override public void onClick(View v) { refresh(); } }));
         addView(bar, new LayoutParams(Ui.MATCH, Ui.WRAP));
 

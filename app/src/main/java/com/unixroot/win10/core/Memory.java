@@ -40,6 +40,10 @@ public final class Memory {
         } else { w16(a, v); w16(a + 2, v >>> 16); }
     }
 
+    public long r64(int a) { return (r32(a) & 0xFFFFFFFFL) | ((long) r32(a + 4) << 32); }
+
+    public void w64(int a, long v) { w32(a, (int) v); w32(a + 4, (int) (v >>> 32)); }
+
     public void write(int addr, byte[] src, int off, int len) {
         for (int i = 0; i < len; i++) w8(addr + i, src[off + i]);
     }
