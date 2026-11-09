@@ -20,11 +20,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install NDK and CMake required by the project (SDK is preinstalled on runner)
+      - name: Install Android platform and build-tools (SDK is preinstalled on runner)
         run: |
           SDKM=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
           yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" "platforms;android-35" "build-tools;35.0.0" "ndk;24.0.8215888" "cmake;3.22.1"
+          "$SDKM" "platforms;android-35" "build-tools;35.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
 
@@ -58,4 +58,4 @@ jobs:
         run: |
           gh release create "v1.0-${{ github.run_number }}" dist/Win10-Emulator-Redmi13C.apk dist/SHA256.txt \
             --title "Win10 Emulator Redmi 13C build ${{ github.run_number }}" \
-            --notes "Winlator-based Windows emulator (arm64-v8a), default 800x600. Debug-signed, installs directly."
+            --notes "Original Win10-style desktop + custom x86 emulator (pure Java, no third-party emulator code). Debug-signed, installs directly."
