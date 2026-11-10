@@ -261,6 +261,35 @@ final class Desktop extends FrameLayout {
         return w;
     }
 
+    /** Opens a window around arbitrary content (used for emulated native Win32 windows). */
+    WinFrame openCustom(String title, String glyph, View content, int wDp, int hDp) {
+        WinFrame w = new WinFrame(this, title, glyph);
+        w.setContent(content);
+        int sw = getWidth() > 0 ? getWidth() : getResources().getDisplayMetrics().widthPixels;
+        int sh = (getHeight() > 0 ? getHeight() : getResources().getDisplayMetrics().heightPixels) - taskbarH;
+        int ww = Math.min(Ui.dp(act, wDp), sw - Ui.dp(act, 10));
+        int wh = Math.min(Ui.dp(act, hDp), sh - Ui.dp(act, 6));
+        LayoutParams lp = new LayoutParams(ww, wh, Gravity.TOP | Gravity.START);
+        lp.leftMargin = Math.max(0, (sw - ww) / 2);
+        lp.topMargin = Math.max(0, Math.min(sh - wh, Ui.dp(act, 6)));
+        windowLayer.addView(w, lp);
+        windows.add(w);
+        final WinFrame fw = w;
+        TextView tb = Ui.label(act, glyph + " " + shorten(title), 12, Color.WHITE);
+        tb.setGravity(Gravity.CENTER);
+        tb.setPadding(Ui.dp(act, 10), 0, Ui.dp(act, 10), 0);
+        tb.setOnClickListener(new OnClickListener() {
+            @Override public void onClick(View v) {
+                if (fw == active && fw.getVisibility() == VISIBLE) minimize(fw);
+                else { fw.setVisibility(VISIBLE); focus(fw); }
+            }
+        });
+        w.taskBtn = tb;
+        taskButtons.addView(tb, new LinearLayout.LayoutParams(Ui.WRAP, Ui.MATCH));
+        focus(w);
+        return w;
+    }
+
     void focus(WinFrame w) {
         hideStart();
         if (w == active) return;

@@ -489,7 +489,7 @@ public final class Emulator implements Cpu.Hook {
     // ---------------- printf ----------------
     interface Args { int next(); }
 
-    private Args stackArgs(final int start) {
+    Args stackArgs(final int start) {
         return new Args() { int i = start; public int next() { return a(i++); } };
     }
 

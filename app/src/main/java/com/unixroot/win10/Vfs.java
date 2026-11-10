@@ -21,6 +21,7 @@ final class Vfs {
         }
         copyAsset(c, "hello.exe", resolve("C:\\Program Files\\Samples\\hello.exe"));
         copyAsset(c, "calc.exe", resolve("C:\\Program Files\\Samples\\calc.exe"));
+        copyAsset(c, "guidemo.exe", resolve("C:\\Program Files\\Samples\\guidemo.exe"));
         File readme = resolve("C:\\Users\\Public\\Documents\\readme.txt");
         if (!readme.exists()) {
             writeText(readme, "Win10 Emulator\r\n\r\nDrive C: lives inside this app.\r\n"

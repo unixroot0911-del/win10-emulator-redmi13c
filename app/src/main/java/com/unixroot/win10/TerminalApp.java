@@ -13,6 +13,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.unixroot.win10.core.Emulator;
+import com.unixroot.win10.core.GuiHost;
+import com.unixroot.win10.core.Surface;
+import com.unixroot.win10.core.Win32Gui;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -278,6 +281,7 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
         stdin.clear();
         final Emulator em = new Emulator(console, d.vfs.root);
         em.setCwd(cwd);
+        em.setGui(new Win32Gui(host));
         em.setExeDir(exe.getParentFile());
         try {
             em.load(data, d.vfs.toWin(exe), a);
@@ -319,6 +323,29 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
             } });
             try { latch.await(); } catch (InterruptedException ignored) { }
         }
+    };
+
+    private final GuiHost host = new GuiHost() {
+        @Override public HostWindow createWindow(final Win32Gui g, final int hwnd, final String title, final int cw, final int ch) {
+            final NativeWindow[] nw = new NativeWindow[1];
+            final CountDownLatch latch = new CountDownLatch(1);
+            d.act.runOnUiThread(new Runnable() { @Override public void run() {
+                nw[0] = new NativeWindow(d, g, hwnd, cw, ch);
+                float dens = d.act.getResources().getDisplayMetrics().density;
+                nw[0].frame = d.openCustom(title, "\uD83E\uDE9F", nw[0], (int) (cw / dens * 1.0f) + 4, (int) (ch / dens) + 90);
+                latch.countDown();
+            } });
+            try { latch.await(); } catch (InterruptedException ignored) { }
+            final NativeWindow w = nw[0];
+            return new HostWindow() {
+                @Override public Surface surface() { return w.surface; }
+                @Override public void setTitle(final String t) { d.act.runOnUiThread(new Runnable() { @Override public void run() { if (w.frame != null) w.frame.setTitle(t); } }); }
+                @Override public void setVisible(final boolean v) { d.act.runOnUiThread(new Runnable() { @Override public void run() { if (w.frame != null) w.frame.setVisibility(v ? android.view.View.VISIBLE : android.view.View.GONE); } }); }
+                @Override public void close() { d.act.runOnUiThread(new Runnable() { @Override public void run() { w.guestClosed(); } }); }
+            };
+        }
+        @Override public Surface createSurface(int w, int h) { return new NativeWindow.BmpSurface(w, h); }
+        @Override public void messageBox(String title, String text) { console.messageBox(title, text); }
     };
 
     @Override public void onClose() { stopProcess(); }
