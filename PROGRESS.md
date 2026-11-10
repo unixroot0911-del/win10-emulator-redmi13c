@@ -9,3 +9,6 @@
 - No threads (CreateThread synchronous), no Winsock yet, no DirectX. Not tested on a real phone.
 ## Next
 See TASKS.md. Token used was pasted in chat: user must revoke it.
+
+## .NET (in progress)
+- clr/Metadata.java done and verified. Next: TASKS.md item 0b. ModAPI.exe currently reports Unimplemented API _CorExeMain (expected).
