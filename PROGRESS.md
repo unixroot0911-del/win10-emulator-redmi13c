@@ -12,3 +12,4 @@ See TASKS.md. Token used was pasted in chat: user must revoke it.
 
 ## .NET (in progress)
 - clr/Metadata.java done and verified. Next: TASKS.md item 0b. ModAPI.exe currently reports Unimplemented API _CorExeMain (expected).
+- CLR interpreter works on generated demo (loops, recursion, virtual calls, try/catch/finally, strings). Not yet tested: generics-heavy code, WinForms, real-world assemblies. Next: WinForms ext (Bcl.Ext) on Win32Gui/Surface.

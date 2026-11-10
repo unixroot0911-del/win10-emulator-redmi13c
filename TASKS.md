@@ -1,6 +1,7 @@
 # TASKS (priority order)
 0. .NET support (user request: ModAPI.exe = WinForms .NET Framework app, entry _CorExeMain). Plan:
    a. [DONE] clr/Metadata.java: PE+CLI header, all metadata tables/heaps (validated on Python.Runtime.dll).
+   b/c/d(basic). [DONE] Vm/Interp/Bcl: type resolution, CIL interpreter (exceptions, delegates, structs, boxing), string/collections/Math/IO BCL. Verified with tools/make_dotnet.py demo (tools/tests/ClrTest.java). TerminalApp routes managed exes to the Vm. Unimplemented APIs throw NotSupportedException 'Unimplemented .NET API: X::Y' -> add to Bcl.
    b. Signature decoder, type/method resolution (TypeDef/TypeRef/MemberRef/TypeSpec/MethodSpec, generics).
    c. CIL decoder + interpreter (stack machine, exceptions try/catch/finally, delegates, generics, boxing).
    d. Native BCL in Java (no mscorlib available): Object, String, Console, Math, List<T>, Dictionary, StringBuilder, IO.File, ...

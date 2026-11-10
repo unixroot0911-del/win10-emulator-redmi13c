@@ -279,6 +279,7 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
         final byte[] data;
         try { data = Vfs.readAll(exe); } catch (java.io.IOException e) { print("Cannot read file.\n"); return; }
         stdin.clear();
+        if (com.unixroot.win10.clr.Metadata.isManaged(data)) { runManaged(exe, data, a); return; }
         final Emulator em = new Emulator(console, d.vfs.root);
         em.setCwd(cwd);
         em.setGui(new Win32Gui(host));
@@ -301,8 +302,36 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
         updatePrompt();
     }
 
+    private volatile com.unixroot.win10.clr.Vm clr;
+
+    private void runManaged(final File exe, final byte[] data, final String args) {
+        final com.unixroot.win10.clr.Vm vm = new com.unixroot.win10.clr.Vm(exe.getParentFile(), new com.unixroot.win10.clr.Vm.Console() {
+            @Override public void write(String s) { print(s); }
+            @Override public int read() { return console.read(); }
+            @Override public void messageBox(String t, String x) { console.messageBox(t, x); }
+        });
+        vm.fsRoot = d.vfs.root;
+        vm.cwd = cwd;
+        try {
+            vm.main = vm.load(data, exe.getName().replaceAll("\\.[^.]*$", ""));
+        } catch (RuntimeException e) { print(".NET load error: " + e.getMessage() + "\n"); return; }
+        clr = vm;
+        proc = new Thread(new Runnable() { @Override public void run() {
+            int code;
+            try { code = vm.runMain(args.isEmpty() ? new String[0] : args.split(" ")); }
+            catch (Throwable t) { print("\n[.NET runtime error] " + t + "\n"); code = -1; }
+            print("\n[Process exited with code " + code + "]\n");
+            proc = null; clr = null;
+            out.post(new Runnable() { @Override public void run() { updatePrompt(); } });
+        } }, "clr-process");
+        proc.start();
+        updatePrompt();
+    }
+
     private void stopProcess() {
         Emulator em = emu;
+        com.unixroot.win10.clr.Vm cv = clr;
+        if (cv != null) cv.stopped = true;
         Thread t = proc;
         if (em != null) em.stop();
         if (t != null) t.interrupt();

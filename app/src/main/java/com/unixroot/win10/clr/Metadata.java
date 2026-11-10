@@ -53,6 +53,14 @@ public final class Metadata {
     private int cliRva, resRva, resSize;
     public int versionMajor;
 
+    /** True when the image is a PE file carrying a CLR (.NET) header. */
+    public static boolean isManaged(byte[] b) {
+        try {
+            Metadata m = new Metadata(b);
+            return m.entryPointToken != 0 || m.count(TYPEDEF) > 0;
+        } catch (RuntimeException e) { return false; }
+    }
+
     public Metadata(byte[] image) {
         img = image;
         parsePe();
