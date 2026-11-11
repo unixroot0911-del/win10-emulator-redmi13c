@@ -9,7 +9,7 @@
    f. Hook Emulator: if PE has CLI header (or imports _CorExeMain) run via CLR instead of x86.
    Test blocker: no C# compiler in sandbox -> write tiny IL assembler (python) or use pythonnet's Python.Runtime.dll for parsing only.
 1. Verify on real device (user feedback on guidemo.exe, hello.exe, GUI input/keyboard).
-2. Winsock (socket/connect/send/recv/getaddrinfo) via Java sockets + proxy.
+2. [x86 DONE] Winsock via Java sockets + proxy. TODO: .NET WebClient/HttpClient/HttpWebRequest/TcpClient via same proxy; WinInet/WinHTTP for native apps; TLS (schannel) not available.
 3. Real threads (CreateThread, events, WaitForSingleObject) with per-thread Cpu.
 4. More user32/gdi32 (menus, dialogs, ListBox/ComboBox, SetPixel perf), MMX.
 5. Broader CRT (C++ runtime: new/delete, exceptions SEH), more kernel32.

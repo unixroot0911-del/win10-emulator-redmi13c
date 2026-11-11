@@ -279,6 +279,7 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
         final byte[] data;
         try { data = Vfs.readAll(exe); } catch (java.io.IOException e) { print("Cannot read file.\n"); return; }
         stdin.clear();
+        Net.applyToWinSock(d.act);
         if (com.unixroot.win10.clr.Metadata.isManaged(data)) { runManaged(exe, data, a); return; }
         final Emulator em = new Emulator(console, d.vfs.root);
         em.setCwd(cwd);

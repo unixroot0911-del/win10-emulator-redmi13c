@@ -50,6 +50,26 @@ final class Net {
         }
     }
 
+    /** Pushes the saved proxy settings to the emulated Winsock layer. */
+    static void applyToWinSock(Context c) {
+        String spec = proxySpec(c).trim();
+        SharedPreferences p = prefs(c);
+        if (spec.isEmpty()) { com.unixroot.win10.core.WinSock.proxyType = ""; return; }
+        boolean socks = spec.startsWith("socks");
+        int i = spec.indexOf("://");
+        String s = i >= 0 ? spec.substring(i + 3) : spec;
+        int slash = s.indexOf('/');
+        if (slash >= 0) s = s.substring(0, slash);
+        int colon = s.lastIndexOf(':');
+        int port = 8080;
+        if (colon > 0) { try { port = Integer.parseInt(s.substring(colon + 1)); } catch (NumberFormatException ignored) { } }
+        com.unixroot.win10.core.WinSock.proxyHost = colon > 0 ? s.substring(0, colon) : s;
+        com.unixroot.win10.core.WinSock.proxyPort = port;
+        com.unixroot.win10.core.WinSock.proxyUser = p.getString("proxyUser", "");
+        com.unixroot.win10.core.WinSock.proxyPass = p.getString("proxyPass", "");
+        com.unixroot.win10.core.WinSock.proxyType = socks ? "socks" : "http";
+    }
+
     private static Proxy javaProxy(String spec) {
         if (spec == null || spec.trim().isEmpty()) return Proxy.NO_PROXY;
         String s = spec.trim();

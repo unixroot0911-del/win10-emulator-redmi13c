@@ -76,6 +76,7 @@ public final class Emulator implements Cpu.Hook {
     }
 
     Gui gui;
+    private final WinSock ws = new WinSock();
 
     public Emulator(Console con, File root) {
         this.con = con;
@@ -1067,6 +1068,7 @@ public final class Emulator implements Cpu.Hook {
                 v = n.equals("__allshl") ? v << sh : n.equals("__aullshr") ? v >>> sh : v >> sh;
                 cpu.r[Cpu.EDX] = (int) (v >> 32); return (int) v; }
             default:
+                if (WinSock.handles(n)) return ws.call(n, this);
                 if (gui != null) return gui.call(n, this);
                 throw new EmuException("Unimplemented API: " + n);
         }

@@ -71,6 +71,8 @@ final class Win32Table {
           + "__divdi3:4c,__moddi3:4c,__udivdi3:4c,__umoddi3:4c,__allmul:4s,__alldiv:4s,__aullrem:4s,__aulldiv:4s,__allrem:4s,__allshl:0s,__aullshr:0s,__allshr:0s");
     }
 
+    static { add(WinSock.SPEC); }
+
     static void addExtra(String spec) { add(spec); }
 
     static Integer nargs(String name) { int[] v = T.get(name); return v == null ? null : v[0]; }
