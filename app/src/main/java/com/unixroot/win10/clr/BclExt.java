@@ -35,6 +35,11 @@ public final class BclExt implements Bcl.Ext {
     static final class AsmObj { final Image img; AsmObj(Image i) { img = i; } }
     static final class Info { final String kind; final File f; final String win; Info(String k, File f, String win) { kind = k; this.f = f; this.win = win; } }
     static final class Req { final String url; String method = "GET"; byte[] body; java.util.HashMap<String, String> headers = new java.util.HashMap<>(); int status; Strm resp; String ctype = ""; Req(String u) { url = u; } }
+    static final class Uri {
+        final String text; java.net.URI u;
+        Uri(String t) { text = t; try { u = new java.net.URI(t.replace(" ", "%20")); } catch (Exception e) { u = null; } }
+        @Override public String toString() { return u != null && u.isAbsolute() ? u.toString() : text; }
+    }
     static final class Misc { final String kind; Misc(String k) { kind = k; } }
 
     private final java.util.IdentityHashMap<Thread, Thr> threads = new java.util.IdentityHashMap<>();
@@ -65,6 +70,8 @@ public final class BclExt implements Bcl.Ext {
             case "System.Environment+SpecialFolder::Desktop": case "System.Environment/SpecialFolder::Desktop": return 0;
             case "System.AppDomain::CurrentDomain": return new Misc("AppDomain");
             case "System.Globalization.CultureInfo::InvariantCulture": return new Misc("Culture");
+            case "System.UriKind::Absolute": return 1; case "System.UriKind::Relative": return 2; case "System.UriKind::RelativeOrAbsolute": return 0;
+            case "System.Uri::UriSchemeHttp": return "http"; case "System.Uri::UriSchemeHttps": return "https";
         }
         if (f.owner.full.startsWith("System.Environment/SpecialFolder")) return 0;
         if (f.owner.full.equals("System.Globalization.NumberStyles") || f.owner.full.startsWith("System.Globalization.")) return 0;
@@ -92,6 +99,7 @@ public final class BclExt implements Bcl.Ext {
         if (recv instanceof AsmObj) return onAsm((AsmObj) recv, n, a);
         if (recv instanceof Info) return onInfo((Info) recv, n, a);
         if (recv instanceof Req) return onReq((Req) recv, n, a);
+        if (recv instanceof Uri) return onUri((Uri) recv, n, a);
         if (recv instanceof Misc && ((Misc) recv).kind.equals("Net")) return onNet((Misc) recv, n, a);
         if (recv instanceof Misc && ((Misc) recv).kind.equals("Headers")) return null;
         if (recv instanceof Misc) return onMisc((Misc) recv, n, a);
@@ -123,6 +131,14 @@ public final class BclExt implements Bcl.Ext {
             case "System.Text.UTF8Encoding": return new Enc(StandardCharsets.UTF_8);
             case "System.Globalization.CultureInfo": return new Misc("Culture");
             case "System.Version": { Misc v = new Misc("Version"); return v; }
+            case "System.Uri": {
+                Uri u;
+                if (a.length > 2 && a[1] instanceof Uri) { try { u = new Uri(((Uri) a[1]).u.resolve(String.valueOf(a[2])).toString()); } catch (RuntimeException e) { u = new Uri(String.valueOf(a[2])); } }
+                else u = new Uri(String.valueOf(a[1]));
+                int kind = a.length > 2 && a[2] instanceof Integer ? (Integer) a[2] : 0;
+                if (kind == 1 && (u.u == null || !u.u.isAbsolute())) throw vm.makeThrow("System.UriFormatException", "Invalid URI: The format of the URI could not be determined.");
+                return u;
+            }
             case "System.Net.WebClient": return new Misc("Net");
         }
         return Bcl.NONE;
@@ -142,7 +158,41 @@ public final class BclExt implements Bcl.Ext {
     }
 
     // ---- statics
+    private Object onUri(Uri r, String n, Object[] a) {
+        java.net.URI u = r.u; boolean abs = u != null && u.isAbsolute();
+        switch (n) {
+            case "ToString": case "get_AbsoluteUri": case "get_OriginalString": return n.equals("get_OriginalString") ? r.text : r.toString();
+            case "get_IsAbsoluteUri": return bool(abs);
+            case "get_Scheme": return abs ? u.getScheme() : "";
+            case "get_Host": case "get_DnsSafeHost": return abs && u.getHost() != null ? u.getHost() : "";
+            case "get_Port": return abs ? (u.getPort() >= 0 ? u.getPort() : "https".equals(u.getScheme()) ? 443 : "http".equals(u.getScheme()) ? 80 : -1) : -1;
+            case "get_AbsolutePath": return u == null || u.getRawPath() == null || u.getRawPath().isEmpty() ? "/" : u.getRawPath();
+            case "get_LocalPath": return u == null ? r.text : u.getPath();
+            case "get_Query": return u == null || u.getRawQuery() == null ? "" : "?" + u.getRawQuery();
+            case "get_Fragment": return u == null || u.getRawFragment() == null ? "" : "#" + u.getRawFragment();
+            case "get_PathAndQuery": return (u == null || u.getRawPath() == null || u.getRawPath().isEmpty() ? "/" : u.getRawPath()) + (u == null || u.getRawQuery() == null ? "" : "?" + u.getRawQuery());
+            case "get_Authority": return abs && u.getRawAuthority() != null ? u.getRawAuthority() : "";
+            case "get_IsFile": return bool(abs && "file".equals(u.getScheme()));
+            case "GetHashCode": return r.toString().hashCode();
+            case "Equals": return bool(a[1] instanceof Uri && a[1].toString().equals(r.toString()));
+        }
+        return Bcl.NONE;
+    }
+
     private Object statics(ClrMethod m, String owner, String n, Object[] a) {
+        if (owner.equals("System.Uri")) {
+            switch (n) {
+                case "EscapeDataString": case "EscapeUriString": try { return java.net.URLEncoder.encode(String.valueOf(a[0]), "UTF-8").replace("+", "%20").replace("*", "%2A").replace("%7E", "~"); } catch (Exception e) { return a[0]; }
+                case "UnescapeDataString": try { return java.net.URLDecoder.decode(String.valueOf(a[0]).replace("+", "%2B"), "UTF-8"); } catch (Exception e) { return a[0]; }
+                case "IsWellFormedUriString": { Uri t = new Uri(String.valueOf(a[0])); return bool(t.u != null && (t.u.isAbsolute() || (a.length > 1 && a[1] instanceof Integer && (Integer) a[1] != 1))); }
+                case "TryCreate": {
+                    Uri t = new Uri(String.valueOf(a[0])); int kind = a[1] instanceof Integer ? (Integer) a[1] : 0;
+                    boolean ok = t.u != null && (kind != 1 || t.u.isAbsolute()) && (kind != 2 || !t.u.isAbsolute());
+                    if (a[a.length - 1] instanceof Ref) ((Ref) a[a.length - 1]).set(ok ? t : null);
+                    return bool(ok);
+                }
+            }
+        }
         switch (owner + "::" + n) {
             case "System.Threading.Thread::get_CurrentThread": { Thr t = threads.get(Thread.currentThread()); if (t == null) { t = new Thr(); t.id = 1; t.name = "Main"; t.t = Thread.currentThread(); threads.put(Thread.currentThread(), t); } return t; }
             case "System.Threading.Thread::set_CurrentCulture": case "System.Threading.Thread::set_CurrentUICulture": return null;
@@ -404,10 +454,10 @@ public final class BclExt implements Bcl.Ext {
 
     private Object onNet(Misc m, String n, Object[] a) {
         switch (n) {
-            case "DownloadString": return new String(fetchBytes((String) a[1], "GET", null, null), StandardCharsets.UTF_8);
-            case "DownloadData": return fetchBytes((String) a[1], "GET", null, null);
-            case "DownloadFile": try { Files.write(path(a[2]).toPath(), fetchBytes((String) a[1], "GET", null, null)); } catch (java.io.IOException e) { throw vm.makeThrow("System.IO.IOException", e.getMessage()); } return null;
-            case "UploadString": return new String(fetchBytes((String) a[1], "POST", ((String) a[2]).getBytes(StandardCharsets.UTF_8), null), StandardCharsets.UTF_8);
+            case "DownloadString": return new String(fetchBytes(String.valueOf(a[1]), "GET", null, null), StandardCharsets.UTF_8);
+            case "DownloadData": return fetchBytes(String.valueOf(a[1]), "GET", null, null);
+            case "DownloadFile": try { Files.write(path(a[2]).toPath(), fetchBytes(String.valueOf(a[1]), "GET", null, null)); } catch (java.io.IOException e) { throw vm.makeThrow("System.IO.IOException", e.getMessage()); } return null;
+            case "UploadString": return new String(fetchBytes(String.valueOf(a[1]), "POST", ((String) a[2]).getBytes(StandardCharsets.UTF_8), null), StandardCharsets.UTF_8);
             case "get_Headers": return new Misc("Headers"); case "set_Proxy": case "set_Credentials": case "set_Encoding": case "Dispose": return null;
         }
         return Bcl.NONE;

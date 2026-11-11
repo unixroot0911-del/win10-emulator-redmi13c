@@ -20,3 +20,4 @@ See TASKS.md. Token used was pasted in chat: user must revoke it.
 - Done: XAML-text loader, layout engine (Grid/StackPanel/DockPanel/Canvas/WrapPanel/Border), WPF element API on WinForms painter, code-behind handler binding. Verified headless (tools/tests XamlGui harness -> PNG).
 - NOT done: BAML reader (Application.LoadComponent returns unimplemented), styles/templates/bindings/resources, shapes drawing. Real WPF apps (e.g. ModAPI.exe) still likely fail at LoadComponent.
 - Next: BAML parser (record types from memory, no sample data), then styles/resources.
+- System.Uri/UriKind implemented (BclExt). ModAPI.exe next failure unknown; iterate on 'Unimplemented .NET' messages from the user's screenshots.
