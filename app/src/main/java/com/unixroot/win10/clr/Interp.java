@@ -187,6 +187,7 @@ public final class Interp {
         if (t instanceof ClrThrow) return (ClrThrow) t;
         if (t instanceof ArithmeticException) return vm.makeThrow("System.DivideByZeroException", "Attempted to divide by zero.");
         if (t instanceof NullPointerException) {
+            if (System.getenv("CLR_DEBUG") != null) t.printStackTrace();
             ClrThrow ct = vm.makeThrow("System.NullReferenceException", "Object reference not set to an instance of an object.");
             for (StackTraceElement e : t.getStackTrace()) if (e.getClassName().startsWith("com.unixroot.win10.clr") && !e.getClassName().contains("Interp")) { ct.frames.add("[native] " + e.getClassName().substring(e.getClassName().lastIndexOf('.') + 1) + "." + e.getMethodName() + ":" + e.getLineNumber()); break; }
             return ct;

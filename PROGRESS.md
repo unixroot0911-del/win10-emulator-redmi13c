@@ -30,3 +30,8 @@ See TASKS.md. Token used was pasted in chat: user must revoke it.
 
 ## Updates over previous install
 - APK now signed with fixed key app/update-key.jks (committed on purpose; before this each CI run used a random debug key). versionCode = GitHub run number. First build with this key requires ONE uninstall of older versions; later builds update in place.
+
+## WPF fixes (found via new wpf_demo IL test)
+- Bug: WinForms.call claimed every ClrObject with a Ctl nativeState, so WPF objects were routed to WinForms (returned null -> NullReferenceException, e.g. in ModAPI App.ApplyTheme). Fixed: WinForms skips Ctls with props "wpf".
+- Added real ResourceDictionary (Item/Add/MergedDictionaries/Source), FindResource/TryFindResource, Freezable/Color members; `new Application()/Window()/Button()` now create proper objects; unknown WPF getters throw NotSupported (no silent null).
+- Test: python3 tools/make_dotnet.py wpf.exe wpf (IL demo: resources + window + button) -> verified headless.

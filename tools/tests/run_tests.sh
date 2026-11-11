@@ -17,3 +17,4 @@ java -cp $CLS Test t_dll.exe 2>&1 | grep -v "Picked up" | grep -v "^exit=" > dll
 printf '[dll attach]\n42 hello from mydll 1 2\n' > dll.expected
 if diff -q dll.expected dll.actual >/dev/null; then echo "PASS dll"; pass=$((pass+1)); else echo "FAIL dll"; diff dll.expected dll.actual | head -6; fail=$((fail+1)); fi
 echo "passed=$pass failed=$fail"
+# WPF: python3 tools/make_dotnet.py wpf.exe wpf && java -cp out:g ClrGui wpf.exe wpf.png   (WPF_DEBUG=1 logs WPF API calls; CLR_DEBUG=1 prints native NPE traces)

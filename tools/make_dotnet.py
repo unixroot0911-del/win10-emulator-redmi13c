@@ -276,5 +276,48 @@ def winforms_demo():
     a.method(tProg, 0x96, 'Main', [0x00, 0, VOID], body(il.done(), 8))
     return a
 
+def wpf_demo():
+    a = Asm('WpfDemo')
+    mscorlib = a.asmref('mscorlib'); pf = a.asmref('PresentationFramework'); pc = a.asmref('PresentationCore'); wb = a.asmref('WindowsBase')
+    R = lambda asm, ns, n: a.typeref(asm << 2 | 2, ns, n)
+    tObject = R(mscorlib, 'System', 'Object')
+    tWin = R(pf, 'System.Windows', 'Window'); tApp = R(pf, 'System.Windows', 'Application'); tRD = R(pf, 'System.Windows', 'ResourceDictionary')
+    tBtn = R(pf, 'System.Windows.Controls', 'Button'); tCC = R(pf, 'System.Windows.Controls', 'ContentControl')
+    tSCB = R(pc, 'System.Windows.Media', 'SolidColorBrush'); tColor = R(pc, 'System.Windows.Media', 'Color'); tFrz = R(wb, 'System.Windows', 'Freezable')
+    tIList = R(mscorlib, 'System.Collections', 'IList')
+    I4, STR, OBJ, VOID = 0x08, 0x0E, 0x1C, 0x01
+    def cls(tok): return [0x12, ((tok & 0xFFFFFF) << 2) | 1]
+    def vt(tok): return [0x11, ((tok & 0xFFFFFF) << 2) | 1]
+    appCtor = a.memberref(tApp, '.ctor', [0x20, 0, VOID]); winCtor = a.memberref(tWin, '.ctor', [0x20, 0, VOID]); btnCtor = a.memberref(tBtn, '.ctor', [0x20, 0, VOID]); rdCtor = a.memberref(tRD, '.ctor', [0x20, 0, VOID])
+    getCur = a.memberref(tApp, 'get_Current', bytes([0x00, 0]) + bytes(cls(tApp)))
+    getRes = a.memberref(tApp, 'get_Resources', bytes([0x20, 0]) + bytes(cls(tRD)))
+    setItem = a.memberref(tRD, 'set_Item', [0x20, 2, VOID, OBJ, OBJ]); getItem = a.memberref(tRD, 'get_Item', [0x20, 1, OBJ, OBJ])
+    getMerged = a.memberref(tRD, 'get_MergedDictionaries', [0x20, 0, OBJ]); ilAdd = a.memberref(tIList, 'Add', [0x20, 1, I4, OBJ])
+    fromRgb = a.memberref(tColor, 'FromRgb', bytes([0x00, 3]) + bytes(vt(tColor)) + bytes([0x05, 0x05, 0x05]))
+    scbCtor = a.memberref(tSCB, '.ctor', bytes([0x20, 1, VOID]) + bytes(vt(tColor)))
+    freeze = a.memberref(tFrz, 'Freeze', [0x20, 0, VOID])
+    setTitle = a.memberref(tWin, 'set_Title', [0x20, 1, VOID, STR]); setContent = a.memberref(tCC, 'set_Content', [0x20, 1, VOID, OBJ])
+    run = a.memberref(tApp, 'Run', bytes([0x20, 1, I4]) + bytes(cls(tWin)))
+    tModule = a.typedef(0, '', '<Module>', 0); tProg = a.typedef(0x100000, '', 'Program', tObject)
+    US = lambda t: 0x70000000 | a.US(t)
+    il = IL()
+    il.tok(0x73, appCtor).op(0x0A)
+    il.tok(0x28, getCur).tok(0x6F, getRes).op(0x0B)
+    il.op(0x07).tok(0x72, US('s')).tok(0x72, US('FromResource')).tok(0x6F, setItem)
+    il.i4(200).i4(100).i4(50).tok(0x28, fromRgb).tok(0x73, scbCtor).op(0x0C)
+    il.op(0x08).tok(0x6F, freeze)
+    il.op(0x07).tok(0x72, US('b')).op(0x08).tok(0x6F, setItem)
+    il.op(0x07).tok(0x6F, getMerged).tok(0x73, rdCtor).tok(0x6F, ilAdd).op(0x26)
+    il.tok(0x73, winCtor).op(0x0D)
+    il.op(0x09).tok(0x72, US('Wpf IL demo')).tok(0x6F, setTitle)
+    il.tok(0x73, btnCtor).op(0x13).op(4)
+    il.op(0x11).op(4).op(0x07).tok(0x72, US('s')).tok(0x6F, getItem).tok(0x6F, setContent)
+    il.op(0x09).op(0x11).op(4).tok(0x6F, setContent)
+    il.op(0x06).op(0x09).tok(0x6F, run).op(0x26).op(0x2A)
+    loc = bytes([0x07, 5]) + bytes(cls(tApp)) + bytes(cls(tRD)) + bytes(cls(tSCB)) + bytes(cls(tWin)) + bytes(cls(tBtn))
+    a.sigs.append(loc); locTok = 0x11000000 | len(a.sigs)
+    a.method(tProg, 0x96, 'Main', [0x00, 0, VOID], body(il.done(), 8, locTok))
+    return a
+
 if __name__ == '__main__':
-    open(sys.argv[1], 'wb').write(build(winforms_demo() if len(sys.argv) > 2 and sys.argv[2] == 'wf' else demo()))
+    open(sys.argv[1], 'wb').write(build(wpf_demo() if len(sys.argv) > 2 and sys.argv[2] == 'wpf' else winforms_demo() if len(sys.argv) > 2 and sys.argv[2] == 'wf' else demo()))

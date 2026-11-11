@@ -9,6 +9,7 @@ import java.util.HashMap;
 /** A WPF subset: element tree, layout panels and XAML loading, rendered through the WinForms control painter. */
 public final class Wpf implements Bcl.Ext {
     private static final String WC = "System.Windows.Controls.", W = "System.Windows.", WM = "System.Windows.Media.", WS = "System.Windows.Shapes.";
+    static final boolean DEBUG = System.getenv("WPF_DEBUG") != null;
     final Vm vm;
     final WinForms wf;
 
@@ -526,7 +527,23 @@ public final class Wpf implements Bcl.Ext {
 
     @Override public Object call(Vm vm, ClrMethod m, Object[] a) {
         String owner = m.owner == null ? "" : m.owner.full, n = m.name;
+        if (DEBUG && owner.startsWith("System.Windows")) System.err.println("[wpf] " + owner + "::" + n);
         Object recv = m.hasThis && a.length > 0 ? (a[0] instanceof Ref ? ((Ref) a[0]).get() : a[0]) : null;
+        if (recv instanceof ResDict) return onRes((ResDict) recv, n, a);
+        if (recv instanceof ClrObject && ((ClrObject) recv).nativeState instanceof ResDict) return onRes((ResDict) ((ClrObject) recv).nativeState, n, a);
+        if (n.equals(".ctor") && owner.equals(W + "ResourceDictionary")) {
+            if (a[0] == null) return new ResDict();
+            ((ClrObject) a[0]).nativeState = new ResDict(); return null;
+        }
+        if ((recv instanceof Integer || recv instanceof int[]) && m.hasThis && ours(owner)) {
+            switch (n) {
+                case "Freeze": case "set_Opacity": case "set_Transform": return null;
+                case "CanFreeze": return 1; case "get_IsFrozen": return 1;
+                case "get_Color": case "Clone": case "CloneCurrentValue": return recv;
+                case "get_Opacity": return 1.0;
+                case "get_R": return (byte) (((Integer) recv >> 16) & 255); case "get_G": return (byte) (((Integer) recv >> 8) & 255); case "get_B": return (byte) ((Integer) recv & 255); case "get_A": return (byte) 255;
+            }
+        }
         Ctl c = recv instanceof ClrObject && ((ClrObject) recv).nativeState instanceof Ctl ? (Ctl) ((ClrObject) recv).nativeState : null;
         boolean wpfObj = c != null && c.props.containsKey("wpf");
         if (!ours(owner) && !wpfObj) return Bcl.NONE;
@@ -540,6 +557,12 @@ public final class Wpf implements Bcl.Ext {
             }
             if (a[0] == null) {
                 String kind = owner.substring(owner.lastIndexOf('.') + 1);
+                if (owner.equals(W + "Application") || (PAINT.containsKey(kind) && !owner.equals(W + "Uri"))) {
+                    ClrObject o = vm.newObject(vm.nativeType(owner));
+                    if (kind.equals("Application")) { Ctl app = new Ctl(); app.kind = "App"; app.props.put("wpf", "Application"); o.nativeState = app; wf.currentApp = o; }
+                    else make(kind, o);
+                    return o;
+                }
                 switch (owner) {
                     case W + "Thickness": { Object[] v = new Object[]{a[1], a.length > 2 ? a[2] : a[1], a.length > 3 ? a[3] : a[1], a.length > 4 ? a[4] : a[1]}; int[] t = new int[4]; for (int i = 0; i < 4; i++) t[i] = (int) Math.round(((Number) v[i]).doubleValue()); return t; }
                     case W + "Uri": case "System.Uri": return a[1];
@@ -619,7 +642,7 @@ public final class Wpf implements Bcl.Ext {
             case "set_Background": case "set_Fill": if (a[1] instanceof Integer) c.back = (Integer) a[1]; wf.dirty(c); return null;
             case "set_Foreground": if (a[1] instanceof Integer) c.fore = (Integer) a[1]; wf.dirty(c); return null;
             case "set_FontSize": c.fontPx = Math.max(8, (int) Math.round(((Number) a[1]).doubleValue() * 1.15)); wf.dirty(c); return null;
-            case "set_FontWeight": case "set_FontFamily": case "set_ToolTip": case "set_Cursor": case "set_Resources": case "set_Style": case "set_Icon": case "set_ResizeMode": case "set_WindowStartupLocation": case "set_Topmost": case "set_ShowInTaskbar": case "set_SizeToContent": case "set_WindowStyle": return null;
+            case "set_FontWeight": case "set_FontFamily": case "set_ToolTip": case "set_Cursor": case "set_Style": case "set_Icon": case "set_ResizeMode": case "set_WindowStartupLocation": case "set_Topmost": case "set_ShowInTaskbar": case "set_SizeToContent": case "set_WindowStyle": return null;
             case "set_Orientation": c.props.put("Or", num(a[1]) == 1 ? "Horizontal" : "Vertical"); return null;
             case "set_Name": c.name = (String) a[1]; return null; case "get_Name": return c.name;
             case "get_Tag": return c.tag; case "set_Tag": c.tag = a[1]; return null;
@@ -639,13 +662,15 @@ public final class Wpf implements Bcl.Ext {
             case "get_Parent": return c.parent == null ? null : c.parent.obj;
             case "get_Dispatcher": return new WinForms.Props("Dispatcher");
             case "get_IsLoaded": return 1;
-            case "get_Resources": return new WinForms.Props("ResourceDictionary");
+            case "get_Resources": return resOf(c);
+            case "set_Resources": if (a[1] instanceof ResDict) c.props.put("res", a[1]); return null;
+            case "FindResource": { Object v = findRes(c, a[1]); if (v == null) throw vm.makeThrow("System.Windows.ResourceReferenceKeyNotFoundException", "Cannot find resource named '" + a[1] + "'."); return v; }
+            case "TryFindResource": return findRes(c, a[1]);
             case "GetHashCode": return System.identityHashCode(c);
             case "Equals": return c.obj == a[1] ? 1 : 0;
             case "ToString": return W + "Controls." + wkind(c);
         }
         if (n.startsWith("set_") || n.equals("BeginInit") || n.equals("EndInit")) return null;
-        if (n.startsWith("get_")) return null;
         return Bcl.NONE;
     }
 
@@ -656,13 +681,59 @@ public final class Wpf implements Bcl.Ext {
             case "Run": { Ctl w = a.length > 1 ? ctl(a[1]) : null; if (w == null && wf.mainWindowObj == null && c.props.get("StartupUri") != null) wf.mainWindowObj = createStartupWindow((String) c.props.get("StartupUri")); if (w == null && wf.mainWindowObj != null) w = ctl(wf.mainWindowObj); if (w != null) wf.runLoop(w); return 0; }
             case "Shutdown": wf.quit = true; return null;
             case "get_MainWindow": return wf.mainWindowObj; case "set_MainWindow": wf.mainWindowObj = (ClrObject) a[1]; return null;
-            case "get_Resources": return new WinForms.Props("ResourceDictionary");
+            case "get_Resources": return resOf(c);
+            case "set_Resources": if (a[1] instanceof ResDict) c.props.put("res", a[1]); return null;
+            case "FindResource": { Object v = findRes(c, a[1]); if (v == null) throw vm.makeThrow("System.Windows.ResourceReferenceKeyNotFoundException", "Cannot find resource named '" + a[1] + "'."); return v; }
+            case "TryFindResource": return findRes(c, a[1]);
             case "get_Dispatcher": return new WinForms.Props("Dispatcher");
             case "InitializeComponent": return null;
             case "set_StartupUri": c.props.put("StartupUri", String.valueOf(a[1])); return null;
         }
         if (n.startsWith("add_") || n.startsWith("remove_") || n.startsWith("set_")) return null;
-        if (n.startsWith("get_")) return null;
+        return Bcl.NONE;
+    }
+
+    /** WPF ResourceDictionary. */
+    public static final class ResDict {
+        final java.util.LinkedHashMap<Object, Object> map = new java.util.LinkedHashMap<>();
+        final ArrayList<Object> merged = new ArrayList<>();
+        Object source;
+    }
+
+    private static Object rkey(Object k) { return k instanceof ClrObject || k == null ? k : k.toString(); }
+
+    private ResDict resOf(Ctl c) { Object r = c.props.get("res"); if (r == null) { r = new ResDict(); c.props.put("res", r); } return (ResDict) r; }
+
+    private Object findRes(Ctl c, Object key) {
+        for (Ctl p = c; p != null; p = p.parent) { ResDict d = (ResDict) p.props.get("res"); if (d != null) { Object v = lookup(d, key); if (v != null) return v; } }
+        if (wf.currentApp != null && wf.currentApp.nativeState instanceof Ctl) { ResDict d = (ResDict) ((Ctl) wf.currentApp.nativeState).props.get("res"); if (d != null) return lookup(d, key); }
+        return null;
+    }
+
+    private Object lookup(ResDict d, Object key) {
+        Object v = d.map.get(rkey(key)); if (v != null) return v;
+        for (Object m : d.merged) if (m instanceof ResDict) { v = lookup((ResDict) m, key); if (v != null) return v; }
+        return null;
+    }
+
+    private Object onRes(ResDict d, String n, Object[] a) {
+        switch (n) {
+            case "get_Item": return lookup(d, a[1]);
+            case "set_Item": d.map.put(rkey(a[1]), a[2]); return null;
+            case "Add": d.map.put(rkey(a[1]), a[2]); return null;
+            case "Remove": d.map.remove(rkey(a[1])); return null;
+            case "Clear": d.map.clear(); return null;
+            case "Contains": case "ContainsKey": return lookup(d, a[1]) != null ? 1 : 0;
+            case "get_Count": return d.map.size();
+            case "get_Keys": return new ArrayList<Object>(d.map.keySet());
+            case "get_Values": return new ArrayList<Object>(d.map.values());
+            case "get_MergedDictionaries": return d.merged;
+            case "get_Source": return d.source;
+            case "set_Source": d.source = a[1]; return null;
+            case "BeginInit": case "EndInit": return null;
+            case "GetHashCode": return System.identityHashCode(d);
+            case "Equals": return d == a[1] ? 1 : 0;
+        }
         return Bcl.NONE;
     }
 

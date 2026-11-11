@@ -158,6 +158,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         Object recv = m.hasThis && a.length > 0 ? (a[0] instanceof Ref ? ((Ref) a[0]).get() : a[0]) : null;
         if (m.hasThis && recv != null && !(recv instanceof ClrObject) && !(recv instanceof Pt) && !(recv instanceof Sz) && !(recv instanceof Rc) && !(recv instanceof Col)
                 && !(recv instanceof Props) && !(recv instanceof Gfx) && !(recv instanceof CtlList) && !(recv instanceof ItemList) && !(recv instanceof Wpf.ChildList)) return Bcl.NONE;
+        if (recv instanceof ClrObject && ((ClrObject) recv).nativeState instanceof Ctl && ((Ctl) ((ClrObject) recv).nativeState).props.containsKey("wpf")) return Bcl.NONE; // WPF objects are handled by Wpf
         boolean wf = owner.startsWith(WF) || owner.startsWith(SD) || owner.startsWith("System.ComponentModel");
         if (recv instanceof ClrObject && ((ClrObject) recv).nativeState instanceof Ctl) wf = true;
         if (recv instanceof ClrObject && ((ClrObject) recv).nativeState instanceof Props) wf = true;
