@@ -41,3 +41,7 @@ See TASKS.md. Token used was pasted in chat: user must revoke it.
 - Delegate detection broadened (ThreadStart, ParameterizedThreadStart, *Callback, *Handler).
 - Wpf.Disp: Dispatcher Invoke/BeginInvoke/Run/InvokeShutdown; secondary-thread Dispatcher.Run waits, main-thread pump drives all windows. Vm.mainThread added.
 - Test: wpf_demo now starts a Thread(ThreadStart), calls stubbed SystemParameters + Dispatcher. Verified headless.
+
+## v1.0-24: BclXml.java
+- System.Xml.Linq (XDocument/XElement/XAttribute/XName via DOM; implicit/explicit conversions by return type), StackTrace/StackFrame/MethodBase (reports entry type's Main). Thread unhandled exceptions now print frames.
+- User screenshot v1.0-23: ModAPI opens a window "The Forest ModAPI" (empty content) and then hit NRE after StackTrace.GetFrame stub. Next: see what it does after this; the empty window content = BAML/XAML content not rendered or not built yet.

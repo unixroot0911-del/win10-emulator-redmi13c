@@ -278,7 +278,7 @@ public final class BclExt implements Bcl.Ext {
                 Thread th = new Thread(() -> {
                     try { vm.interp.invokeDelegate(t.d, t.d.targets.get(0)[1] != null && ((ClrMethod) t.d.targets.get(0)[1]).nparams == 1 ? new Object[]{t.arg} : new Object[0]); }
                     catch (Interp.Stop | Interp.Exit e) { /* terminated */ }
-                    catch (ClrThrow e) { vm.console.write("\nUnhandled Exception: " + Vm.describe(e.ex) + "\n"); }
+                    catch (ClrThrow e) { vm.console.write("\nUnhandled Exception (thread): " + Vm.describe(e.ex) + "\n"); for (String fr : e.frames) vm.console.write("   at " + fr + "\n"); }
                     catch (RuntimeException e) { vm.console.write("\n[thread error] " + e + "\n"); }
                 });
                 th.setDaemon(true); t.t = th; threads.put(th, t); th.start(); return null;

@@ -27,6 +27,7 @@ public final class Vm {
         this.exeDir = exeDir; console = c;
         bcl = new Bcl(this);
         bcl.exts.add(new BclExt(this));
+        bcl.exts.add(new BclXml(this));
         interp = new Interp(this);
     }
 
