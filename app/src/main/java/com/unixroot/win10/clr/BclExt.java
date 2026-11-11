@@ -34,6 +34,7 @@ public final class BclExt implements Bcl.Ext {
     static final class Grp { final String v; final boolean ok; final int idx; Grp(String v, boolean ok, int idx) { this.v = v; this.ok = ok; this.idx = idx; } }
     static final class AsmObj { final Image img; AsmObj(Image i) { img = i; } }
     static final class Info { final String kind; final File f; final String win; Info(String k, File f, String win) { kind = k; this.f = f; this.win = win; } }
+    static final class Req { final String url; String method = "GET"; byte[] body; java.util.HashMap<String, String> headers = new java.util.HashMap<>(); int status; Strm resp; String ctype = ""; Req(String u) { url = u; } }
     static final class Misc { final String kind; Misc(String k) { kind = k; } }
 
     private final java.util.IdentityHashMap<Thread, Thr> threads = new java.util.IdentityHashMap<>();
@@ -90,6 +91,9 @@ public final class BclExt implements Bcl.Ext {
         if (recv instanceof Grp) { Grp g = (Grp) recv; switch (n) { case "get_Value": return g.v; case "get_Success": return bool(g.ok); case "get_Index": return g.idx; case "get_Length": return g.v.length(); case "ToString": return g.v; } return Bcl.NONE; }
         if (recv instanceof AsmObj) return onAsm((AsmObj) recv, n, a);
         if (recv instanceof Info) return onInfo((Info) recv, n, a);
+        if (recv instanceof Req) return onReq((Req) recv, n, a);
+        if (recv instanceof Misc && ((Misc) recv).kind.equals("Net")) return onNet((Misc) recv, n, a);
+        if (recv instanceof Misc && ((Misc) recv).kind.equals("Headers")) return null;
         if (recv instanceof Misc) return onMisc((Misc) recv, n, a);
         return Bcl.NONE;
     }
@@ -119,7 +123,7 @@ public final class BclExt implements Bcl.Ext {
             case "System.Text.UTF8Encoding": return new Enc(StandardCharsets.UTF_8);
             case "System.Globalization.CultureInfo": return new Misc("Culture");
             case "System.Version": { Misc v = new Misc("Version"); return v; }
-            case "System.Net.WebClient": case "System.Net.Http.HttpClient": return new Misc("Net");
+            case "System.Net.WebClient": return new Misc("Net");
         }
         return Bcl.NONE;
     }
@@ -205,6 +209,7 @@ public final class BclExt implements Bcl.Ext {
             case "System.BitConverter::get_IsLittleEndian": return 1;
             case "System.Security.Cryptography.MD5::Create": case "System.Security.Cryptography.SHA1::Create": case "System.Security.Cryptography.SHA256::Create": return new Misc(owner.substring(owner.lastIndexOf('.') + 1));
             case "System.Net.ServicePointManager::set_SecurityProtocol": case "System.Net.ServicePointManager::set_Expect100Continue": return null;
+            case "System.Net.WebRequest::Create": case "System.Net.HttpWebRequest::Create": return new Req(a[0] instanceof String ? (String) a[0] : String.valueOf(a[0]));
             case "System.Guid::NewGuid": return java.util.UUID.randomUUID().toString();
             case "System.DateTime::get_Today": return (System.currentTimeMillis() / 86400000L * 86400000L) * 10000L + 621355968000000000L;
             case "System.DateTime::op_Subtraction": return a[0] instanceof Long && a[1] instanceof Long ? (Object) ((Long) a[0] - (Long) a[1]) : Bcl.NONE;
@@ -366,6 +371,78 @@ public final class BclExt implements Bcl.Ext {
             case "OpenRead": return openFile(i.f, 3, 1);
             case "CopyTo": try { Files.copy(i.f.toPath(), path(a[1]).toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING); } catch (java.io.IOException e) { /* ignore */ } return null;
             case "ToString": return WinPath.toWin(vm.fsRoot, i.f);
+        }
+        return Bcl.NONE;
+    }
+
+    private java.net.HttpURLConnection connect(String url, String method, byte[] body, java.util.Map<String, String> headers) throws java.io.IOException {
+        java.net.Proxy px = java.net.Proxy.NO_PROXY;
+        String t = com.unixroot.win10.core.WinSock.proxyType, h = com.unixroot.win10.core.WinSock.proxyHost;
+        if (!t.isEmpty() && !h.isEmpty()) px = new java.net.Proxy(t.equals("socks") ? java.net.Proxy.Type.SOCKS : java.net.Proxy.Type.HTTP, new java.net.InetSocketAddress(h, com.unixroot.win10.core.WinSock.proxyPort));
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection(px);
+        c.setConnectTimeout(20000); c.setReadTimeout(30000);
+        c.setRequestMethod(method);
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+        if (!com.unixroot.win10.core.WinSock.proxyUser.isEmpty() && !px.equals(java.net.Proxy.NO_PROXY))
+            c.setRequestProperty("Proxy-Authorization", "Basic " + java.util.Base64.getEncoder().encodeToString((com.unixroot.win10.core.WinSock.proxyUser + ":" + com.unixroot.win10.core.WinSock.proxyPass).getBytes("UTF-8")));
+        if (headers != null) for (java.util.Map.Entry<String, String> e : headers.entrySet()) c.setRequestProperty(e.getKey(), e.getValue());
+        if (body != null) { c.setDoOutput(true); c.getOutputStream().write(body); }
+        return c;
+    }
+
+    private byte[] fetchBytes(String url, String method, byte[] body, java.util.Map<String, String> headers) {
+        try {
+            java.net.HttpURLConnection c = connect(url, method, body, headers);
+            int code = c.getResponseCode();
+            java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            if (in != null) { byte[] b = new byte[8192]; int n; while ((n = in.read(b)) > 0) bo.write(b, 0, n); }
+            if (code >= 400) throw vm.makeThrow("System.Net.WebException", "The remote server returned an error: (" + code + ").");
+            return bo.toByteArray();
+        } catch (java.io.IOException e) { throw vm.makeThrow("System.Net.WebException", "Unable to connect to the remote server: " + e.getMessage()); }
+    }
+
+    private Object onNet(Misc m, String n, Object[] a) {
+        switch (n) {
+            case "DownloadString": return new String(fetchBytes((String) a[1], "GET", null, null), StandardCharsets.UTF_8);
+            case "DownloadData": return fetchBytes((String) a[1], "GET", null, null);
+            case "DownloadFile": try { Files.write(path(a[2]).toPath(), fetchBytes((String) a[1], "GET", null, null)); } catch (java.io.IOException e) { throw vm.makeThrow("System.IO.IOException", e.getMessage()); } return null;
+            case "UploadString": return new String(fetchBytes((String) a[1], "POST", ((String) a[2]).getBytes(StandardCharsets.UTF_8), null), StandardCharsets.UTF_8);
+            case "get_Headers": return new Misc("Headers"); case "set_Proxy": case "set_Credentials": case "set_Encoding": case "Dispose": return null;
+        }
+        return Bcl.NONE;
+    }
+
+    private Object onReq(Req r, String n, Object[] a) {
+        switch (n) {
+            case "set_Method": r.method = (String) a[1]; return null;
+            case "get_Method": return r.method;
+            case "set_ContentType": r.headers.put("Content-Type", (String) a[1]); return null;
+            case "set_UserAgent": r.headers.put("User-Agent", (String) a[1]); return null;
+            case "set_Accept": r.headers.put("Accept", (String) a[1]); return null;
+            case "get_Headers": return new Misc("Headers");
+            case "set_Timeout": case "set_Proxy": case "set_Credentials": case "set_AllowAutoRedirect": case "set_KeepAlive": case "set_ContentLength": case "set_Referer": case "set_CookieContainer": return null;
+            case "GetRequestStream": { Strm s = new Strm(); s.write = true; r.resp = s; return s; }
+            case "GetResponse": {
+                try {
+                    byte[] body = r.resp != null ? Arrays.copyOf(r.resp.buf, r.resp.len) : null;
+                    java.net.HttpURLConnection c = connect(r.url, r.method, body, r.headers);
+                    int code = c.getResponseCode();
+                    java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                    ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                    if (in != null) { byte[] b = new byte[8192]; int k; while ((k = in.read(b)) > 0) bo.write(b, 0, k); }
+                    Req resp = new Req(r.url); resp.status = code; resp.ctype = String.valueOf(c.getContentType());
+                    Strm s = new Strm(); s.buf = bo.toByteArray(); s.len = s.buf.length; resp.resp = s;
+                    if (code >= 400) throw vm.makeThrow("System.Net.WebException", "The remote server returned an error: (" + code + ") " + c.getResponseMessage() + ".");
+                    return resp;
+                } catch (java.io.IOException e) { throw vm.makeThrow("System.Net.WebException", "Unable to connect to the remote server: " + e.getMessage()); }
+            }
+            case "GetResponseStream": return r.resp;
+            case "get_StatusCode": return r.status;
+            case "get_StatusDescription": return "OK";
+            case "get_ContentType": return r.ctype;
+            case "get_ContentLength": return (long) (r.resp == null ? 0 : r.resp.len);
+            case "Close": case "Dispose": return null;
         }
         return Bcl.NONE;
     }
