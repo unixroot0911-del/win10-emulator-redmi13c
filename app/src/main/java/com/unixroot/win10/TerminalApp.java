@@ -318,14 +318,14 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
             vm.main = vm.load(data, exe.getName().replaceAll("\\.[^.]*$", ""));
         } catch (RuntimeException e) { print(".NET load error: " + e.getMessage() + "\n"); return; }
         clr = vm;
-        proc = new Thread(new Runnable() { @Override public void run() {
+        proc = new Thread(null, new Runnable() { @Override public void run() {
             int code;
             try { code = vm.runMain(args.isEmpty() ? new String[0] : args.split(" ")); }
             catch (Throwable t) { print("\n[.NET runtime error] " + t + "\n"); code = -1; }
             print("\n[Process exited with code " + code + "]\n");
             proc = null; clr = null;
             out.post(new Runnable() { @Override public void run() { updatePrompt(); } });
-        } }, "clr-process");
+        } }, "clr-process", 24L * 1024 * 1024);
         proc.start();
         updatePrompt();
     }

@@ -160,7 +160,7 @@ public final class Interp {
     private static int u16(byte[] b, int o) { return (b[o] & 0xFF) | (b[o + 1] & 0xFF) << 8; }
 
     // ------------------------------------------------------------ execution
-    private int depth;
+    private final ThreadLocal<int[]> depthTl = new ThreadLocal<int[]>() { @Override protected int[] initialValue() { return new int[1]; } };
 
     public Object exec(ClrMethod m, Object[] args) {
         prepare(m);
@@ -173,10 +173,11 @@ public final class Interp {
             f.locals[i] = d instanceof ClrObject ? ((ClrObject) d).copy() : d;
         }
         f.st = new Object[m.maxStack + 4];
-        if (++depth > 600) { depth = 0; throw vm.makeThrow("System.StackOverflowException", "Stack overflow"); }
+        final int[] depth = depthTl.get();
+        if (++depth[0] > 600) { depth[0] = 0; throw vm.makeThrow("System.StackOverflowException", "Stack overflow"); }
         try {
             return runProtected(f, 0);
-        } finally { depth--; }
+        } finally { depth[0]--; }
     }
 
     private ClrThrow toThrow(Throwable t) {
