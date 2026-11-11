@@ -13,3 +13,5 @@
 3. Real threads (CreateThread, events, WaitForSingleObject) with per-thread Cpu.
 4. More user32/gdi32 (menus, dialogs, ListBox/ComboBox, SetPixel perf), MMX.
 5. Broader CRT (C++ runtime: new/delete, exceptions SEH), more kernel32.
+
+- NOTE: ModAPI.exe is WPF (System.Windows.Application, DispatcherUnhandledException). WPF needs BAML/XAML loader + dependency properties + layout; out of scope for now. Terminal now reports WPF apps clearly.

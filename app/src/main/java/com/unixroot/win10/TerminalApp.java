@@ -317,6 +317,13 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
         try {
             vm.main = vm.load(data, exe.getName().replaceAll("\\.[^.]*$", ""));
         } catch (RuntimeException e) { print(".NET load error: " + e.getMessage() + "\n"); return; }
+        for (int i = 1; i <= vm.main.md.count(com.unixroot.win10.clr.Metadata.ASSEMBLYREF); i++) {
+            String ar = vm.main.md.string(vm.main.md.row(com.unixroot.win10.clr.Metadata.ASSEMBLYREF, i)[6]);
+            if (ar.equals("PresentationFramework") || ar.equals("PresentationCore")) {
+                print("This is a WPF application (uses " + ar + ").\nWPF (XAML/BAML) is not supported by this emulator; only console and WinForms .NET programs run.\n");
+                return;
+            }
+        }
         clr = vm;
         proc = new Thread(null, new Runnable() { @Override public void run() {
             int code;
