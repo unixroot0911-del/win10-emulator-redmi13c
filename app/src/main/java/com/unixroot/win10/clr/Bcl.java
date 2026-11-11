@@ -21,6 +21,29 @@ public final class Bcl {
     private final Vm vm;
     public Bcl(Vm vm) { this.vm = vm; }
 
+    /** When true, unimplemented .NET members are logged once and stubbed (default value) instead of throwing. */
+    public boolean lenient;
+    private final java.util.HashSet<String> stubbed = new java.util.HashSet<>();
+
+    private boolean stub(String what) {
+        if (!lenient) return false;
+        if (stubbed.add(what)) vm.console.write("[compat] stubbed missing API: " + what + "\n");
+        return true;
+    }
+
+    /** Default return value for a stubbed call, from the method signature's return type. */
+    private static Object retDefault(ClrMethod m) {
+        if (m.retVoid || m.sig == null || m.sig.length < 3) return null;
+        int i = 1; if ((m.sig[0] & 0x10) != 0) i++;
+        int pc = m.sig[i] & 255; i += (pc & 0x80) != 0 ? 2 : 1;
+        while (i < m.sig.length && (m.sig[i] == 0x1F || m.sig[i] == 0x20)) i += 2;
+        int t = i < m.sig.length ? m.sig[i] & 255 : 0x1C;
+        if (t >= 2 && t <= 9 || t == 0x18 || t == 0x19) return 0;
+        if (t == 0x0A || t == 0x0B) return 0L;
+        if (t == 0x0C || t == 0x0D) return 0.0;
+        return null;
+    }
+
     /** Hook for additional native libraries (e.g. WinForms) tried before the built-in dispatch. */
     public interface Ext {
         /** Returns Ext.NONE when the call is not handled. */
@@ -76,7 +99,9 @@ public final class Bcl {
             return "System.Exception";
         }
         if (full.startsWith("System.Func`") || full.startsWith("System.Action`") || full.startsWith("System.Predicate`") || full.startsWith("System.Comparison`")
-                || full.endsWith("EventHandler") || full.startsWith("System.EventHandler`")) return "System.MulticastDelegate";
+                || full.endsWith("EventHandler") || full.startsWith("System.EventHandler`") || full.endsWith("ThreadStart") || full.endsWith("Callback") || full.endsWith("Handler")
+                || full.equals("System.Converter`2") || full.equals("System.Threading.SendOrPostCallback") || full.equals("System.Windows.Threading.DispatcherOperationCallback")
+                || full.equals("System.Threading.TimerCallback") || full.equals("System.AsyncCallback") || full.startsWith("System.Comparison`")) return "System.MulticastDelegate";
         if (full.equals("System.Collections.Generic.IEqualityComparer`1")) return "System.Object";
         return "System.Object";
     }
@@ -148,6 +173,7 @@ public final class Bcl {
             case "System.Collections.Generic.KeyValuePair": return new KVP(a[0], a[1]);
             case "System.DateTime": return a.length == 1 ? (Object) (Long) a[0] : (Object) 0L;
         }
+        if (stub("new " + ctor.owner.full + ctor.sigText)) return vm.newObject(vm.nativeType(ctor.owner.full));
         throw vm.makeThrow("System.NotSupportedException", "Unimplemented .NET type: new " + ctor.owner.full + ctor.sigText);
     }
 
@@ -207,6 +233,7 @@ public final class Bcl {
             case "System.StringComparison::CurrentCulture": return 0;
             case "System.Globalization.CultureInfo::InvariantCulture": case "System.Globalization.CultureInfo::CurrentCulture": return "inv";
         }
+        if (stub("field " + f.owner.full + "::" + n)) return 0;
         throw vm.makeThrow("System.NotSupportedException", "Unimplemented .NET field: " + f.owner.full + "::" + n);
     }
 
@@ -215,7 +242,7 @@ public final class Bcl {
         if (o instanceof KVP) return f.name.equals("key") ? ((KVP) o).k : ((KVP) o).v;
         throw vm.makeThrow("System.NotSupportedException", "Unimplemented .NET field: " + f.owner.full + "::" + f.name);
     }
-    public void setInstanceField(Object o, FieldInfo f, Object v) { throw vm.makeThrow("System.NotSupportedException", "Unimplemented .NET field store: " + f.name); }
+    public void setInstanceField(Object o, FieldInfo f, Object v) { if (stub("field store " + f.name)) return; throw vm.makeThrow("System.NotSupportedException", "Unimplemented .NET field store: " + f.name); }
 
     // ------------------------------------------------------------ call dispatch
     public Object call(ClrMethod m, Object[] a) {
@@ -277,6 +304,7 @@ public final class Bcl {
     private static String defaultMessage(ClrObject o) { return "Exception of type '" + o.type.full + "' was thrown."; }
 
     private Object unimpl(ClrMethod m) {
+        if (stub(m.owner.full + "::" + m.name + m.sigText)) return retDefault(m);
         throw vm.makeThrow("System.NotSupportedException", "Unimplemented .NET API: " + m.owner.full + "::" + m.name + m.sigText);
     }
 
@@ -826,6 +854,7 @@ public final class Bcl {
         }
         // enum helpers / unknown
         if (key.equals("System.Enum::ToObject")) return a[1];
+        if (stub(m.owner.full + "::" + n + m.sigText)) return retDefault(m);
         throw vm.makeThrow("System.NotSupportedException", "Unimplemented .NET API: " + m.owner.full + "::" + n + m.sigText);
     }
 

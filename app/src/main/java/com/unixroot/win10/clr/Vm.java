@@ -452,7 +452,10 @@ public final class Vm {
     }
 
     /** Runs the entry point; returns exit code. */
+    public volatile Thread mainThread;
+
     public int runMain(String[] args) {
+        mainThread = Thread.currentThread();
         int tok = main.md.entryPointToken;
         if (tok == 0) throw new IllegalStateException("no entry point");
         ClrMethod m = resolveMethod(main, tok);

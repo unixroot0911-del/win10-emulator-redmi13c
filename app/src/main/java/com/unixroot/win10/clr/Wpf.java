@@ -529,6 +529,8 @@ public final class Wpf implements Bcl.Ext {
         String owner = m.owner == null ? "" : m.owner.full, n = m.name;
         if (DEBUG && owner.startsWith("System.Windows")) System.err.println("[wpf] " + owner + "::" + n);
         Object recv = m.hasThis && a.length > 0 ? (a[0] instanceof Ref ? ((Ref) a[0]).get() : a[0]) : null;
+        if (recv instanceof Disp) return onDisp((Disp) recv, n, a, false);
+        if (owner.equals(W + "Threading.Dispatcher") && !m.hasThis) { switch (n) { case "get_CurrentDispatcher": case "FromThread": return disp; case "Run": case "ExitAllFrames": return onDisp(disp, n, a, true); } }
         if (recv instanceof ResDict) return onRes((ResDict) recv, n, a);
         if (recv instanceof ClrObject && ((ClrObject) recv).nativeState instanceof ResDict) return onRes((ResDict) ((ClrObject) recv).nativeState, n, a);
         if (n.equals(".ctor") && owner.equals(W + "ResourceDictionary")) {
@@ -660,7 +662,7 @@ public final class Wpf implements Bcl.Ext {
             case "get_DataContext": return c.props.get("dc"); case "set_DataContext": c.props.put("dc", a[1]); return null;
             case "UpdateLayout": case "InvalidateVisual": case "BeginInit": case "EndInit": wf.dirty(c); return null;
             case "get_Parent": return c.parent == null ? null : c.parent.obj;
-            case "get_Dispatcher": return new WinForms.Props("Dispatcher");
+            case "get_Dispatcher": return disp;
             case "get_IsLoaded": return 1;
             case "get_Resources": return resOf(c);
             case "set_Resources": if (a[1] instanceof ResDict) c.props.put("res", a[1]); return null;
@@ -685,11 +687,40 @@ public final class Wpf implements Bcl.Ext {
             case "set_Resources": if (a[1] instanceof ResDict) c.props.put("res", a[1]); return null;
             case "FindResource": { Object v = findRes(c, a[1]); if (v == null) throw vm.makeThrow("System.Windows.ResourceReferenceKeyNotFoundException", "Cannot find resource named '" + a[1] + "'."); return v; }
             case "TryFindResource": return findRes(c, a[1]);
-            case "get_Dispatcher": return new WinForms.Props("Dispatcher");
+            case "get_Dispatcher": return disp;
             case "InitializeComponent": return null;
             case "set_StartupUri": c.props.put("StartupUri", String.valueOf(a[1])); return null;
         }
         if (n.startsWith("add_") || n.startsWith("remove_") || n.startsWith("set_")) return null;
+        return Bcl.NONE;
+    }
+
+    /** System.Windows.Threading.Dispatcher: runs delegates inline / on the UI queue. */
+    public static final class Disp { final java.util.concurrent.CountDownLatch quit = new java.util.concurrent.CountDownLatch(1); }
+    final Disp disp = new Disp();
+
+    private Object onDisp(Disp d, String n, Object[] a, boolean isStatic) {
+        int base = isStatic ? 0 : 1;
+        switch (n) {
+            case "Invoke": case "BeginInvoke": case "InvokeAsync": {
+                Delegate del = null; int di = -1;
+                for (int i = base; i < a.length; i++) if (a[i] instanceof Delegate) { del = (Delegate) a[i]; di = i; break; }
+                if (del == null) return null;
+                ArrayList<Object> rest = new ArrayList<>();
+                for (int i = di + 1; i < a.length; i++) { if (a[i] instanceof Object[]) for (Object o : (Object[]) a[i]) rest.add(o); else rest.add(a[i]); }
+                final Delegate fd = del; final Object[] args = rest.toArray();
+                if (n.equals("Invoke")) return vm.interp.invokeDelegate(fd, args);
+                wf.post(() -> { try { vm.interp.invokeDelegate(fd, args); } catch (Interp.Stop | Interp.Exit e) { throw e; } catch (RuntimeException e) { vm.console.write("\n[dispatcher] " + e + "\n"); } });
+                return new WinForms.Props("DispatcherOperation");
+            }
+            case "CheckAccess": return 1;
+            case "VerifyAccess": return null;
+            case "Run": try { if (Thread.currentThread() == vm.mainThread) wf.runLoop(null); else d.quit.await(); } catch (InterruptedException e) { throw new Interp.Stop(); } return null;
+            case "InvokeShutdown": case "BeginInvokeShutdown": case "ExitAllFrames": d.quit.countDown(); if (Thread.currentThread() != vm.mainThread) { /* ends a secondary dispatcher */ } return null;
+            case "get_HasShutdownStarted": return d.quit.getCount() == 0 ? 1 : 0;
+            case "get_Thread": return null;
+            case "GetHashCode": return 1;
+        }
         return Bcl.NONE;
     }
 

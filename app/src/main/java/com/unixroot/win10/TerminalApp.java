@@ -326,6 +326,7 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
             }
         }
         clr = vm;
+        vm.bcl.lenient = true;
         proc = new Thread(null, new Runnable() { @Override public void run() {
             int code;
             try { code = vm.runMain(args.isEmpty() ? new String[0] : args.split(" ")); }

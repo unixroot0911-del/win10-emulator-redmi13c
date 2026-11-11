@@ -35,3 +35,9 @@ See TASKS.md. Token used was pasted in chat: user must revoke it.
 - Bug: WinForms.call claimed every ClrObject with a Ctl nativeState, so WPF objects were routed to WinForms (returned null -> NullReferenceException, e.g. in ModAPI App.ApplyTheme). Fixed: WinForms skips Ctls with props "wpf".
 - Added real ResourceDictionary (Item/Add/MergedDictionaries/Source), FindResource/TryFindResource, Freezable/Color members; `new Application()/Window()/Button()` now create proper objects; unknown WPF getters throw NotSupported (no silent null).
 - Test: python3 tools/make_dotnet.py wpf.exe wpf (IL demo: resources + window + button) -> verified headless.
+
+## Lenient mode + Dispatcher (v1.0-23)
+- Bcl.lenient (enabled in TerminalApp): unimplemented .NET methods/ctors/fields are logged once as "[compat] stubbed missing API: X" and return defaults (typed from signature) instead of throwing, so apps run further and the log lists ALL gaps.
+- Delegate detection broadened (ThreadStart, ParameterizedThreadStart, *Callback, *Handler).
+- Wpf.Disp: Dispatcher Invoke/BeginInvoke/Run/InvokeShutdown; secondary-thread Dispatcher.Run waits, main-thread pump drives all windows. Vm.mainThread added.
+- Test: wpf_demo now starts a Thread(ThreadStart), calls stubbed SystemParameters + Dispatcher. Verified headless.

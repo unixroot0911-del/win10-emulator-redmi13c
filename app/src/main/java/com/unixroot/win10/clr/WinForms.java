@@ -471,6 +471,8 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
     }
 
     /** Processes pending host events, timers and repaints for up to waitMs. */
+    void post(Runnable r) { queue.add(r); }
+
     void pump(long waitMs) {
         try {
             Runnable r = waitMs > 0 ? queue.poll(waitMs, TimeUnit.MILLISECONDS) : queue.poll();

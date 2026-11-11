@@ -15,7 +15,7 @@ public class ClrGui {
     };
     Vm vm = new Vm(exe.getParentFile(), new Vm.Console(){ public void write(String s){System.out.print(s);} public int read(){return -1;} public void messageBox(String t,String x){ System.out.println("[MsgBox] "+t+": "+x);} });
     vm.fsRoot = new java.io.File(exe.getParentFile(), "C_root"); vm.fsRoot.mkdirs();
-    WinForms.install(vm, host);
+    vm.bcl.lenient = true; WinForms.install(vm, host);
     vm.main = vm.load(Files.readAllBytes(exe.toPath()), "wf");
     new Thread(() -> { try { Thread.sleep(500);
       for (int i=0;i<3;i++){ in[0].postMouse(win[0],0x201,30,60); in[0].postMouse(win[0],0x202,30,60); }
