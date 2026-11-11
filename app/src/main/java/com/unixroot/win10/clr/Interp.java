@@ -177,13 +177,20 @@ public final class Interp {
         if (++depth[0] > 600) { depth[0] = 0; throw vm.makeThrow("System.StackOverflowException", "Stack overflow"); }
         try {
             return runProtected(f, 0);
+        } catch (ClrThrow t) {
+            if (t.frames.size() < 12) t.frames.add(m.owner.full + "::" + m.name);
+            throw t;
         } finally { depth[0]--; }
     }
 
     private ClrThrow toThrow(Throwable t) {
         if (t instanceof ClrThrow) return (ClrThrow) t;
         if (t instanceof ArithmeticException) return vm.makeThrow("System.DivideByZeroException", "Attempted to divide by zero.");
-        if (t instanceof NullPointerException) return vm.makeThrow("System.NullReferenceException", "Object reference not set to an instance of an object.");
+        if (t instanceof NullPointerException) {
+            ClrThrow ct = vm.makeThrow("System.NullReferenceException", "Object reference not set to an instance of an object.");
+            for (StackTraceElement e : t.getStackTrace()) if (e.getClassName().startsWith("com.unixroot.win10.clr") && !e.getClassName().contains("Interp")) { ct.frames.add("[native] " + e.getClassName().substring(e.getClassName().lastIndexOf('.') + 1) + "." + e.getMethodName() + ":" + e.getLineNumber()); break; }
+            return ct;
+        }
         if (t instanceof ArrayIndexOutOfBoundsException) return vm.makeThrow("System.IndexOutOfRangeException", "Index was outside the bounds of the array.");
         if (t instanceof ClassCastException) return vm.makeThrow("System.InvalidCastException", "Specified cast is not valid.");
         if (t instanceof NegativeArraySizeException) return vm.makeThrow("System.OverflowException", "Arithmetic operation resulted in an overflow.");

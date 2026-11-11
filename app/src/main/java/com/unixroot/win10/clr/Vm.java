@@ -467,6 +467,7 @@ public final class Vm {
             return -1;
         } catch (ClrThrow t) {
             console.write("\nUnhandled Exception: " + describe(t.ex) + "\n");
+            for (String fr : t.frames) console.write("   at " + fr + "\n");
             return -532462766;
         }
     }

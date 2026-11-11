@@ -8,12 +8,16 @@ android {
         applicationId 'com.unixroot.win10'
         minSdkVersion 26
         targetSdkVersion 33
-        versionCode 1
-        versionName "1.0"
+        versionCode (System.getenv("GITHUB_RUN_NUMBER") ?: "1") as int
+        versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
     }
 
     signingConfigs {
         debug {
+            storeFile file('update-key.jks')
+            storePassword 'win10emu'
+            keyAlias 'win10'
+            keyPassword 'win10emu'
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true

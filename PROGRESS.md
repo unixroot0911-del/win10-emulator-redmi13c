@@ -27,3 +27,6 @@ See TASKS.md. Token used was pasted in chat: user must revoke it.
 - Verified only with a synthetic BAML written by a Python writer (self-consistent), NOT with a real compiled WPF app. Set env WPF_DEBUG=1 to print generated XAML.
 - Ignored: styles/templates/resources/bindings/StaticResource, shapes, many enum properties (only HA/VA/Visibility/Orientation/Dock/TextAlignment mapped).
 - Next: iterate on real ModAPI.exe errors from user screenshots.
+
+## Updates over previous install
+- APK now signed with fixed key app/update-key.jks (committed on purpose; before this each CI run used a random debug key). versionCode = GitHub run number. First build with this key requires ONE uninstall of older versions; later builds update in place.

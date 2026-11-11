@@ -157,6 +157,7 @@ public final class Model {
     /** Thrown to propagate a managed exception through Java frames. */
     public static final class ClrThrow extends RuntimeException {
         public final Object ex;
+        public final java.util.ArrayList<String> frames = new java.util.ArrayList<>();
         public ClrThrow(Object ex) { super(null, null, false, false); this.ex = ex; }
         @Override public String getMessage() { return Vm.describe(ex); }
     }
