@@ -21,3 +21,9 @@ See TASKS.md. Token used was pasted in chat: user must revoke it.
 - NOT done: BAML reader (Application.LoadComponent returns unimplemented), styles/templates/bindings/resources, shapes drawing. Real WPF apps (e.g. ModAPI.exe) still likely fail at LoadComponent.
 - Next: BAML parser (record types from memory, no sample data), then styles/resources.
 - System.Uri/UriKind implemented (BclExt). ModAPI.exe next failure unknown; iterate on 'Unimplemented .NET' messages from the user's screenshots.
+
+## BAML loader (Baml.java, BamlTables.java)
+- Ported from dotnet/wpf Baml2006Reader (fetched from GitHub raw; KnownTypes tables generated into BamlTables.java). Baml -> XAML text -> Wpf.loadXaml onto existing code-behind object; ConnectionId -> IComponentConnector.Connect(id, element) so event hookups from guest code run. StartupUri -> creates window class from BAML root type. .resources container reader in Baml.resources().
+- Verified only with a synthetic BAML written by a Python writer (self-consistent), NOT with a real compiled WPF app. Set env WPF_DEBUG=1 to print generated XAML.
+- Ignored: styles/templates/resources/bindings/StaticResource, shapes, many enum properties (only HA/VA/Visibility/Orientation/Dock/TextAlignment mapped).
+- Next: iterate on real ModAPI.exe errors from user screenshots.

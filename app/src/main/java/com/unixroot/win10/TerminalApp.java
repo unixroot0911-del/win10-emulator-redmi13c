@@ -321,7 +321,7 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
         for (int i = 1; i <= vm.main.md.count(com.unixroot.win10.clr.Metadata.ASSEMBLYREF); i++) {
             String ar = vm.main.md.string(vm.main.md.row(com.unixroot.win10.clr.Metadata.ASSEMBLYREF, i)[6]);
             if (ar.equals("PresentationFramework") || ar.equals("PresentationCore")) {
-                print("WPF application (uses " + ar + "): partial WPF support (code-built UI, layout panels). Compiled XAML (BAML) is not yet loaded, so XAML-designed windows may fail.\n");
+                print("WPF application (uses " + ar + "): partial WPF support (code-built UI, layout panels). Compiled XAML (BAML) is read by a new loader that has not been tested on real apps; styles, templates and bindings are ignored.\n");
                 break;
             }
         }

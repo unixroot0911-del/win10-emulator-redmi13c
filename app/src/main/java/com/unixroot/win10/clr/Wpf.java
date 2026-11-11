@@ -157,12 +157,14 @@ public final class Wpf implements Bcl.Ext {
         String kind = local(e.getTagName());
         ClrObject obj = rootObj;
         if (obj == null) obj = vm.newObject(vm.nativeType(ownerOf(kind)));
-        Ctl c = make(kind, obj);
+        Ctl c = rootObj != null && rootObj.nativeState instanceof Ctl ? (Ctl) rootObj.nativeState : make(kind, obj);
+        if (rootObj != null && c.props.get("wpf") == null) c.props.put("wpf", kind);
         org.w3c.dom.NamedNodeMap at = e.getAttributes();
         for (int i = 0; i < at.getLength(); i++) {
             String n = at.item(i).getNodeName(), v = at.item(i).getNodeValue();
             if (n.startsWith("xmlns")) continue;
             if (n.equals("x:Class")) { c.props.put("xclass", v); continue; }
+            if (n.equals("cid")) { c.props.put("cid", Integer.parseInt(v)); continue; }
             if (v.startsWith("{")) { applyMarkup(c, n, v); continue; }
             String ln = n.equals("x:Name") ? "Name" : n;
             if (isEventName(ln)) { c.props.put("on:" + ln, v); continue; }
@@ -450,6 +452,66 @@ public final class Wpf implements Bcl.Ext {
         arrange(win);
     }
 
+
+    // ------------------------------------------------------------ compiled XAML (BAML) loading
+    private byte[] findBaml(String uri) {
+        String u = uri.replace('\\', '/');
+        int i = u.indexOf(";component/");
+        if (i >= 0) u = u.substring(i + 11);
+        while (u.startsWith("/")) u = u.substring(1);
+        String key = u.toLowerCase();
+        if (key.endsWith(".xaml")) key = key.substring(0, key.length() - 5) + ".baml";
+        for (Model.Image img : new Model.Image[]{vm.main}) {
+            if (img == null) continue;
+            for (String rn : img.md.managedResourceNames()) {
+                if (!rn.toLowerCase().endsWith(".g.resources") && !rn.toLowerCase().endsWith(".resources")) continue;
+                byte[] blob = img.md.managedResource(rn);
+                if (blob == null) continue;
+                byte[] b = Baml.resources(blob).get(key);
+                if (b != null) return b;
+            }
+        }
+        return null;
+    }
+
+    void loadComponent(ClrObject target, String uri) {
+        byte[] baml = findBaml(uri);
+        if (baml == null) throw vm.makeThrow("System.IO.IOException", "Cannot locate resource '" + uri + "'.");
+        Baml.Result res;
+        try { res = Baml.toXaml(baml); }
+        catch (RuntimeException e) { throw vm.makeThrow("System.Windows.Markup.XamlParseException", "BAML read failed for " + uri + ": " + e.getMessage()); }
+        if (System.getenv("WPF_DEBUG") != null) System.err.println(res.xaml);
+        Ctl root = loadXaml(res.xaml, target);
+        connect(root, target);
+    }
+
+    private void connect(Ctl c, ClrObject target) {
+        Object cid = c.props.get("cid");
+        if (cid instanceof Integer) callConnect(target, (Integer) cid, c.obj);
+        for (Ctl k : new ArrayList<>(c.kids)) connect(k, target);
+    }
+
+    private void callConnect(ClrObject target, int id, Object el) {
+        for (ClrType t = target.type; t != null && !t.isNative; t = t.base)
+            for (ClrMethod m : t.methods)
+                if (!m.isStatic && m.nparams == 2 && (m.name.equals("System.Windows.Markup.IComponentConnector.Connect") || m.name.equals("Connect"))) { vm.invoke(m, new Object[]{target, id, el}); return; }
+    }
+
+    /** Creates and shows the window named by Application.StartupUri. Returns its object or null. */
+    ClrObject createStartupWindow(String uri) {
+        byte[] baml = findBaml(uri);
+        if (baml == null) return null;
+        Baml.Result res = Baml.toXaml(baml);
+        Model.Image img = vm.main;
+        Integer row = img.typeByName.get(res.rootType);
+        if (row == null) return null;
+        ClrType t = vm.typeDef(img, row);
+        vm.ensureInit(t);
+        ClrObject o = vm.newObject(t);
+        for (ClrMethod m : t.methods) if (m.name.equals(".ctor") && m.nparams == 0 && !m.isStatic) { vm.invoke(m, new Object[]{o}); break; }
+        return o;
+    }
+
     // ------------------------------------------------------------ Ext (code-behind API)
     @Override public Object getStatic(Vm vm, FieldInfo f) {
         String t = f.owner.full, n = f.name;
@@ -501,7 +563,7 @@ public final class Wpf implements Bcl.Ext {
     private Object statics(ClrMethod m, String owner, String n, Object[] a) {
         switch (owner + "::" + n) {
             case W + "Application::get_Current": return wf.currentApp;
-            case W + "Application::LoadComponent": return Bcl.NONE; // handled by BAML loader (stage 2)
+            case W + "Application::LoadComponent": { if (a.length < 2 || !(a[0] instanceof ClrObject)) return Bcl.NONE; loadComponent((ClrObject) a[0], String.valueOf(a[1])); return null; }
             case WM + "Color::FromRgb": return (num(a[0]) & 255) << 16 | (num(a[1]) & 255) << 8 | (num(a[2]) & 255);
             case WM + "Color::FromArgb": return (num(a[1]) & 255) << 16 | (num(a[2]) & 255) << 8 | (num(a[3]) & 255);
             case WM + "ColorConverter::ConvertFromString": return parseColor((String) a[0]);
@@ -591,7 +653,7 @@ public final class Wpf implements Bcl.Ext {
 
     private Object onApp(Ctl c, ClrObject self, String n, Object[] a) {
         switch (n) {
-            case "Run": { Ctl w = a.length > 1 ? ctl(a[1]) : null; if (w == null && wf.mainWindowObj != null) w = ctl(wf.mainWindowObj); if (w != null) wf.runLoop(w); return 0; }
+            case "Run": { Ctl w = a.length > 1 ? ctl(a[1]) : null; if (w == null && wf.mainWindowObj == null && c.props.get("StartupUri") != null) wf.mainWindowObj = createStartupWindow((String) c.props.get("StartupUri")); if (w == null && wf.mainWindowObj != null) w = ctl(wf.mainWindowObj); if (w != null) wf.runLoop(w); return 0; }
             case "Shutdown": wf.quit = true; return null;
             case "get_MainWindow": return wf.mainWindowObj; case "set_MainWindow": wf.mainWindowObj = (ClrObject) a[1]; return null;
             case "get_Resources": return new WinForms.Props("ResourceDictionary");

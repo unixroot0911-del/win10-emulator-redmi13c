@@ -206,6 +206,12 @@ public final class Metadata {
     /** Returns the raw bytes of a method body starting at the given RVA. */
     public int methodBodyOffset(int rva) { return rvaToOff(rva); }
 
+    public java.util.List<String> managedResourceNames() {
+        java.util.ArrayList<String> l = new java.util.ArrayList<>();
+        if (resRva != 0 && rows[MANIFESTRES] != null) for (int[] r : rows[MANIFESTRES]) l.add(string(r[2]));
+        return l;
+    }
+
     public byte[] managedResource(String name) {
         if (resRva == 0) return null;
         int base = rvaToOff(resRva);
