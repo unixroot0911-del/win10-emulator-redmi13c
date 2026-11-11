@@ -23,14 +23,15 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
             "CancelEventArgs", "DragEventArgs", "ScrollEventArgs", "LinkLabelLinkClickedEventArgs", "ItemCheckEventArgs", "DataGridViewCellEventArgs",
             "ToolStripItemClickedEventArgs", "TreeViewEventArgs", "UICancelEventArgs", "ListViewItemSelectionChangedEventArgs"};
 
-    private final Vm vm;
-    private final GuiHost host;
+    final Vm vm;
+    final GuiHost host;
     private final LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
     private final ArrayList<Ctl> forms = new ArrayList<>();
     private final ArrayList<Ctl> timers = new ArrayList<>();
     private final HashMap<Integer, Ctl> byWin = new HashMap<>();
     private int nextWin = 1;
-    private boolean quit;
+    boolean quit;
+    ClrObject currentApp, mainWindowObj;
     private Ctl mainForm;
 
     public static void install(Vm vm, GuiHost host) {
@@ -39,7 +40,9 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         for (String c : ARGS) { Bcl.OBJECT_BACKED.add(WF + c); Bcl.EXTRA_BASES.put(WF + c, "System.EventArgs"); }
         Bcl.OBJECT_BACKED.add("System.EventArgs");
         Bcl.OBJECT_BACKED.add(SD + "Font");
-        vm.bcl.exts.add(new WinForms(vm, host));
+        WinForms w = new WinForms(vm, host);
+        vm.bcl.exts.add(w);
+        w.wpf = Wpf.install(vm, w);
     }
 
     private WinForms(Vm vm, GuiHost host) { this.vm = vm; this.host = host; }
@@ -53,8 +56,9 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
     static final class Gfx { final Surface s; final int ox, oy; Gfx(Surface s, int ox, int oy) { this.s = s; this.ox = ox; this.oy = oy; } }
     static final class CtlList { final Ctl owner; CtlList(Ctl o) { owner = o; } }
     static final class ItemList { final Ctl owner; ItemList(Ctl o) { owner = o; } }
+    Wpf wpf;
 
-    private static final HashMap<String, Integer> COLORS = new HashMap<>();
+    static final HashMap<String, Integer> COLORS = new HashMap<>();
     static {
         Object[] c = {"Black", 0x000000, "White", 0xFFFFFF, "Red", 0xFF0000, "Green", 0x008000, "Blue", 0x0000FF, "Yellow", 0xFFFF00, "Gray", 0x808080, "Orange", 0xFFA500,
             "LightGray", 0xD3D3D3, "DarkGray", 0xA9A9A9, "Silver", 0xC0C0C0, "Cyan", 0x00FFFF, "Magenta", 0xFF00FF, "Purple", 0x800080, "Brown", 0xA52A2A, "Pink", 0xFFC0CB,
@@ -77,7 +81,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         int ax, ay;
     }
 
-    private Ctl C(Object o) {
+    Ctl C(Object o) {
         if (o instanceof ClrObject && ((ClrObject) o).nativeState instanceof Ctl) return (Ctl) ((ClrObject) o).nativeState;
         return null;
     }
@@ -89,7 +93,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         return false;
     }
 
-    private Ctl create(ClrObject o, String full) {
+    Ctl create(ClrObject o, String full) {
         Ctl c = new Ctl();
         c.obj = o; c.kind = full.substring(WF.length());
         o.nativeState = c;
@@ -153,11 +157,11 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         String owner = m.owner == null ? "" : m.owner.full, n = m.name;
         Object recv = m.hasThis && a.length > 0 ? (a[0] instanceof Ref ? ((Ref) a[0]).get() : a[0]) : null;
         if (m.hasThis && recv != null && !(recv instanceof ClrObject) && !(recv instanceof Pt) && !(recv instanceof Sz) && !(recv instanceof Rc) && !(recv instanceof Col)
-                && !(recv instanceof Props) && !(recv instanceof Gfx) && !(recv instanceof CtlList) && !(recv instanceof ItemList)) return Bcl.NONE;
+                && !(recv instanceof Props) && !(recv instanceof Gfx) && !(recv instanceof CtlList) && !(recv instanceof ItemList) && !(recv instanceof Wpf.ChildList)) return Bcl.NONE;
         boolean wf = owner.startsWith(WF) || owner.startsWith(SD) || owner.startsWith("System.ComponentModel");
         if (recv instanceof ClrObject && ((ClrObject) recv).nativeState instanceof Ctl) wf = true;
         if (recv instanceof ClrObject && ((ClrObject) recv).nativeState instanceof Props) wf = true;
-        if (recv instanceof Pt || recv instanceof Sz || recv instanceof Rc || recv instanceof Col || recv instanceof Gfx || recv instanceof CtlList || recv instanceof ItemList || (recv instanceof Props)) wf = true;
+        if (recv instanceof Pt || recv instanceof Sz || recv instanceof Rc || recv instanceof Col || recv instanceof Gfx || recv instanceof CtlList || recv instanceof ItemList || recv instanceof Wpf.ChildList || (recv instanceof Props)) wf = true;
         if (!wf) return Bcl.NONE;
         if (m.ptypes == null) {
             String s = m.sigText.substring(1, m.sigText.length() - 1);
@@ -171,6 +175,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         if (recv instanceof Col) return onCol((Col) recv, n, a);
         if (recv instanceof Gfx) return onGfx((Gfx) recv, n, a);
         if (recv instanceof CtlList) return onCtlList(((CtlList) recv).owner, n, a);
+        if (recv instanceof Wpf.ChildList) return onCtlList(((Wpf.ChildList) recv).owner, n, a);
         if (recv instanceof ItemList) return onItems(((ItemList) recv).owner, n, a);
         if (recv instanceof Props) return onProps((Props) recv, n, a);
         ClrObject o = (ClrObject) recv;
@@ -285,7 +290,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
     }
 
     // ------------------------------------------------------------ control methods
-    private Object onCtl(Ctl c, String n, Object[] a) {
+    Object onCtl(Ctl c, String n, Object[] a) {
         if (n.startsWith("add_")) { String e = n.substring(4); Delegate d = (Delegate) a[1]; Delegate old = c.ev.get(e); c.ev.put(e, old == null ? d : old.combine(d)); return null; }
         if (n.startsWith("remove_")) { String e = n.substring(7); Delegate old = c.ev.get(e); if (old != null) { Delegate r = old.remove((Delegate) a[1]); if (r == null) c.ev.remove(e); else c.ev.put(e, r); } return null; }
         switch (n) {
@@ -397,21 +402,21 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         return null;
     }
 
-    private void addChild(Ctl owner, Ctl k) { if (k.parent != null) k.parent.kids.remove(k); k.parent = owner; owner.kids.add(k); dirty(owner); }
-    private Ctl formOf(Ctl c) { while (c != null && !c.isForm) c = c.parent; return c; }
-    private void dirty(Ctl c) { Ctl f = formOf(c); if (f != null) f.dirty = true; }
-    private int absX(Ctl c) { int x = 0; for (Ctl p = c; p != null && !p.isForm; p = p.parent) x += p.x; return x; }
-    private int absY(Ctl c) { int y = 0; for (Ctl p = c; p != null && !p.isForm; p = p.parent) y += p.y; return y; }
+    void addChild(Ctl owner, Ctl k) { if (k.parent != null) k.parent.kids.remove(k); k.parent = owner; owner.kids.add(k); dirty(owner); }
+    Ctl formOf(Ctl c) { while (c != null && !c.isForm) c = c.parent; return c; }
+    void dirty(Ctl c) { Ctl f = formOf(c); if (f != null) f.dirty = true; }
+    int absX(Ctl c) { int x = 0; for (Ctl p = c; p != null && !p.isForm; p = p.parent) x += p.x; return x; }
+    int absY(Ctl c) { int y = 0; for (Ctl p = c; p != null && !p.isForm; p = p.parent) y += p.y; return y; }
 
     // ------------------------------------------------------------ events
-    private Object fire(Ctl c, String ev, Object args) {
+    Object fire(Ctl c, String ev, Object args) {
         Delegate d = c.ev.get(ev);
         Object a = args != null ? args : vm.newObject(vm.nativeType("System.EventArgs"));
         if (d != null) vm.interp.invokeDelegate(d, new Object[]{c.obj, a});
         return a;
     }
 
-    private ClrObject eventArgs(String type, Object... kv) {
+    ClrObject eventArgs(String type, Object... kv) {
         ClrObject o = vm.newObject(vm.nativeType(WF + type));
         Props p = new Props(type);
         for (int i = 0; i < kv.length; i += 2) p.m.put((String) kv[i], kv[i + 1]);
@@ -420,7 +425,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
     }
 
     // ------------------------------------------------------------ windows
-    private void showForm(Ctl f) {
+    void showForm(Ctl f) {
         if (f.hw == null) {
             f.win = nextWin++;
             byWin.put(f.win, f);
@@ -434,9 +439,9 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         if (mainForm == null) mainForm = f;
     }
 
-    private void hideForm(Ctl f) { f.visible = false; if (f.hw != null) f.hw.setVisible(false); }
+    void hideForm(Ctl f) { f.visible = false; if (f.hw != null) f.hw.setVisible(false); }
 
-    private void closeForm(Ctl f) {
+    void closeForm(Ctl f) {
         if (!f.isForm || f.closed) return;
         ClrObject ea = eventArgs("FormClosingEventArgs", "Cancel", 0, "CloseReason", 0);
         fire(f, "FormClosing", ea);
@@ -449,7 +454,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         if (f == mainForm) quit = true;
     }
 
-    private Object showDialog(Ctl f) {
+    Object showDialog(Ctl f) {
         f.modal = true; f.closed = false;
         showForm(f);
         while (!f.closed && !vm.stopped) pump(50);
@@ -457,7 +462,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         return f.dialogResult;
     }
 
-    private void runLoop(Ctl f) {
+    void runLoop(Ctl f) {
         if (f != null) { mainForm = f; showForm(f); }
         quit = false;
         while (!quit && !vm.stopped && !forms.isEmpty()) pump(30);
@@ -465,7 +470,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
     }
 
     /** Processes pending host events, timers and repaints for up to waitMs. */
-    private void pump(long waitMs) {
+    void pump(long waitMs) {
         try {
             Runnable r = waitMs > 0 ? queue.poll(waitMs, TimeUnit.MILLISECONDS) : queue.poll();
             while (r != null) { r.run(); r = queue.poll(); }
@@ -502,15 +507,16 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
         if (msg == 0x201) {
             if (open != null) {
                 int ax = absX(open), ay = absY(open);
-                if (x >= ax && x < ax + open.w && y >= ay + open.h && y < ay + open.h + open.items.size() * 16) { open.sel = (y - ay - open.h) / 16; Object it = open.items.get(open.sel); open.text = vm.bcl.str(it); open.open = false; fire(open, "SelectedIndexChanged", null); fire(open, "SelectedValueChanged", null); f.dirty = true; return; }
+                if (x >= ax && x < ax + open.w && y >= ay + open.h && y < ay + open.h + open.items.size() * 16) { open.sel = (y - ay - open.h) / 16; Object it = open.items.get(open.sel); open.text = vm.bcl.str(it); open.open = false; fire(open, "SelectedIndexChanged", null); fire(open, "SelectionChanged", null); fire(open, "SelectedValueChanged", null); f.dirty = true; return; }
                 open.open = false; f.dirty = true;
             }
             if (t == null) t = f;
             if (!t.enabled) return;
             f.focus = t; pressedCtl = t; t.pressed = true; f.dirty = true;
+            fire(t, "MouseLeftButtonDown", null);
             fire(t, "MouseDown", eventArgs("MouseEventArgs", "X", x - absX(t), "Y", y - absY(t), "Button", 0x100000, "Clicks", 1));
             if (t.kind.equals("TextBox")) t.caret = t.text.length();
-            if (t.kind.equals("ListBox")) { int i = (y - absY(t) - 2) / 16; if (i >= 0 && i < t.items.size()) { t.sel = i; fire(t, "SelectedIndexChanged", null); } }
+            if (t.kind.equals("ListBox")) { int i = (y - absY(t) - 2) / 16; if (i >= 0 && i < t.items.size()) { t.sel = i; fire(t, "SelectedIndexChanged", null); fire(t, "SelectionChanged", null); } }
         } else if (msg == 0x202) {
             Ctl p = pressedCtl; pressedCtl = null;
             if (p == null) return;
@@ -526,7 +532,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
 
     private void click(Ctl c, Ctl f) {
         switch (c.kind) {
-            case "CheckBox": c.checked = !c.checked; fire(c, "CheckedChanged", null); break;
+            case "CheckBox": c.checked = !c.checked; fire(c, "CheckedChanged", null); fire(c, c.checked ? "Checked" : "Unchecked", null); break;
             case "RadioButton": if (!c.checked) { if (c.parent != null) for (Ctl s : c.parent.kids) if (s.kind.equals("RadioButton")) s.checked = false; c.checked = true; fire(c, "CheckedChanged", null); } break;
             case "ComboBox": c.open = !c.open; break;
         }
@@ -588,6 +594,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
     }
 
     private void paintForm(Ctl f) {
+        if (f.props.containsKey("wpf") && wpf != null) wpf.layoutWindow(f);
         Surface s = f.hw.surface();
         s.fillRect(0, 0, s.width(), s.height(), f.back < 0 ? 0xF0F0F0 : f.back);
         for (Ctl k : f.kids) paintCtl(s, k, 0, 0);
@@ -677,6 +684,7 @@ public final class WinForms implements Bcl.Ext, GuiHost.Input {
             }
             case "Panel": case "FlowLayoutPanel": case "TableLayoutPanel": case "UserControl": case "TabPage":
                 if (k.back >= 0) s.fillRect(x, y, w, h, k.back);
+                if (k.props.get("bc") instanceof Integer && k.props.get("bt") instanceof Integer && (Integer) k.props.get("bt") > 0) s.rect(x, y, w, h, -1, (Integer) k.props.get("bc"), (Integer) k.props.get("bt"));
                 break;
             case "PictureBox": s.rect(x, y, w, h, k.back >= 0 ? k.back : 0xF0F0F0, -1, 1); break;
             case "ProgressBar": {

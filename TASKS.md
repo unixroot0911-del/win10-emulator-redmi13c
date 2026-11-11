@@ -1,3 +1,4 @@
+- [ ] WPF: BAML reader for Application.LoadComponent (highest priority), then styles/bindings
 # TASKS (priority order)
 0. .NET support (user request: ModAPI.exe = WinForms .NET Framework app, entry _CorExeMain). Plan:
    a. [DONE] clr/Metadata.java: PE+CLI header, all metadata tables/heaps (validated on Python.Runtime.dll).

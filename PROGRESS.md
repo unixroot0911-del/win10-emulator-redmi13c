@@ -15,3 +15,8 @@ See TASKS.md. Token used was pasted in chat: user must revoke it.
 - CLR interpreter works on generated demo (loops, recursion, virtual calls, try/catch/finally, strings). Not yet tested: generics-heavy code, WinForms, real-world assemblies. Next: WinForms ext (Bcl.Ext) on Win32Gui/Surface.
 - WinForms ext (clr/WinForms.java): Form/Button/Label/TextBox/CheckBox/RadioButton/ListBox/ComboBox/Panel/GroupBox/ProgressBar/Timer, Graphics, MessageBox, events, Application.Run. Verified with IL demo wf.exe (tools/tests/ClrGui.java). Untested: real apps, menus (MenuStrip), dialogs, generics-heavy code, threads.
 - Winsock (core/WinSock.java): socket/connect/send/recv/bind/listen/accept/getaddrinfo/gethostbyname via java.net; proxy: HTTP CONNECT or SOCKS from Settings (Net.applyToWinSock). Verified vs local HTTP server and CONNECT proxy (tools/tests/t_net.c). netdemo.exe sample: `netdemo.exe host port`. Managed (.NET) sockets/WebClient/HttpWebRequest NOT yet done.
+
+## WPF layer (Wpf.java)
+- Done: XAML-text loader, layout engine (Grid/StackPanel/DockPanel/Canvas/WrapPanel/Border), WPF element API on WinForms painter, code-behind handler binding. Verified headless (tools/tests XamlGui harness -> PNG).
+- NOT done: BAML reader (Application.LoadComponent returns unimplemented), styles/templates/bindings/resources, shapes drawing. Real WPF apps (e.g. ModAPI.exe) still likely fail at LoadComponent.
+- Next: BAML parser (record types from memory, no sample data), then styles/resources.
