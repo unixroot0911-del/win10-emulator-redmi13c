@@ -311,6 +311,8 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
             @Override public void messageBox(String t, String x) { console.messageBox(t, x); }
         });
         vm.fsRoot = d.vfs.root;
+        vm.guiHost = host;
+        com.unixroot.win10.clr.WinForms.install(vm, host);
         vm.cwd = cwd;
         try {
             vm.main = vm.load(data, exe.getName().replaceAll("\\.[^.]*$", ""));
@@ -355,7 +357,7 @@ final class TerminalApp extends LinearLayout implements Desktop.Closeable {
     };
 
     private final GuiHost host = new GuiHost() {
-        @Override public HostWindow createWindow(final Win32Gui g, final int hwnd, final String title, final int cw, final int ch) {
+        @Override public HostWindow createWindow(final GuiHost.Input g, final int hwnd, final String title, final int cw, final int ch) {
             final NativeWindow[] nw = new NativeWindow[1];
             final CountDownLatch latch = new CountDownLatch(1);
             d.act.runOnUiThread(new Runnable() { @Override public void run() {

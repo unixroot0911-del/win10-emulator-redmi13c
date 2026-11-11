@@ -168,6 +168,7 @@ public final class Bcl {
     static final class Stk { final java.util.ArrayDeque<Object> d = new java.util.ArrayDeque<>(); }
     static final class Watch { long start, acc; boolean run; }
     static final class Enm { final Iterator<?> it; Object cur; Enm(Iterator<?> it) { this.it = it; } }
+    public static final class EnmFactory { public Object of(Iterator<?> it) { return new Enm(it); } }
 
     public Object getStatic(FieldInfo f) {
         for (Ext e : exts) { Object r = e.getStatic(vm, f); if (r != NONE) return r; }

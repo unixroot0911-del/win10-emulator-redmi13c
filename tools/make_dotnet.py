@@ -216,5 +216,65 @@ def demo():
     a.method(tProg, 0x96, 'Main', [0x00, 0, VOID], body(il.done(), 8, locTok, clauses))
     return a
 
+
+def winforms_demo():
+    a = Asm('WfDemo')
+    mscorlib = a.asmref('mscorlib'); swf = a.asmref('System.Windows.Forms'); sd = a.asmref('System.Drawing')
+    R = lambda asm, ns, n: a.typeref(asm << 2 | 2, ns, n)
+    tObject = R(mscorlib, 'System', 'Object'); tString = R(mscorlib, 'System', 'String'); tEH = R(mscorlib, 'System', 'EventHandler')
+    tForm = R(swf, 'System.Windows.Forms', 'Form'); tButton = R(swf, 'System.Windows.Forms', 'Button'); tLabel = R(swf, 'System.Windows.Forms', 'Label')
+    tApp = R(swf, 'System.Windows.Forms', 'Application'); tCtl = R(swf, 'System.Windows.Forms', 'Control'); tColl = R(swf, 'System.Windows.Forms', 'Control/ControlCollection')
+    tPoint = R(sd, 'System.Drawing', 'Point'); tSize = R(sd, 'System.Drawing', 'Size')
+    I4, STR, OBJ, VOID, IPTR = 0x08, 0x0E, 0x1C, 0x01, 0x18
+    def cls(tok): return [0x12, ((tok & 0xFFFFFF) << 2) | 1]
+    def vt(tok): return [0x11, ((tok & 0xFFFFFF) << 2) | 1]
+    formCtor = a.memberref(tForm, '.ctor', [0x20, 0, VOID]); btnCtor = a.memberref(tButton, '.ctor', [0x20, 0, VOID]); lblCtor = a.memberref(tLabel, '.ctor', [0x20, 0, VOID])
+    setText = a.memberref(tCtl, 'set_Text', [0x20, 1, VOID, STR]); getText = a.memberref(tCtl, 'get_Text', [0x20, 0, STR])
+    getControls = a.memberref(tCtl, 'get_Controls', bytes([0x20, 0]) + bytes(cls(tColl)))
+    cadd = a.memberref(tColl, 'Add', bytes([0x20, 1, VOID]) + bytes(cls(tCtl)))
+    setLoc = a.memberref(tCtl, 'set_Location', bytes([0x20, 1, VOID]) + bytes(vt(tPoint)))
+    setSize = a.memberref(tCtl, 'set_Size', bytes([0x20, 1, VOID]) + bytes(vt(tSize)))
+    pointCtor = a.memberref(tPoint, '.ctor', [0x20, 2, VOID, I4, I4]); sizeCtor = a.memberref(tSize, '.ctor', [0x20, 2, VOID, I4, I4])
+    addClick = a.memberref(tCtl, 'add_Click', bytes([0x20, 1, VOID]) + bytes(cls(tEH)))
+    ehCtor = a.memberref(tEH, '.ctor', [0x20, 2, VOID, OBJ, IPTR])
+    appRun = a.memberref(tApp, 'Run', bytes([0x00, 1, VOID]) + bytes(cls(tForm)))
+    concat = a.memberref(tString, 'Concat', [0x00, 2, STR, STR, STR])
+    objCtor = a.memberref(tObject, '.ctor', [0x20, 0, VOID])
+    itoa = a.memberref(R(mscorlib, 'System', 'Convert'), 'ToString', [0x00, 1, STR, I4])
+    tModule = a.typedef(0, '', '<Module>', 0)
+    tMain = a.typedef(0x100001, '', 'MainForm', tForm)
+    tProg = a.typedef(0x100000, '', 'Program', tObject)
+    fCount = a.field(tMain, 6, 'count', [0x06, I4]); fLabel = a.field(tMain, 6, 'label', bytes([0x06]) + bytes(cls(tLabel)))
+    # ctor
+    il = IL()
+    il.op(0x02).tok(0x28, formCtor)
+    il.op(0x02).tok(0x72, 0x70000000 | a.US('Demo .NET')).tok(0x6F, setText)
+    il.op(0x02).i4(240).i4(120).tok(0x73, sizeCtor).tok(0x6F, a.memberref(R(swf, 'System.Windows.Forms', 'Form'), 'set_ClientSize', bytes([0x20, 1, VOID]) + bytes(vt(tSize))))
+    il.tok(0x73, lblCtor).op(0x0A)  # stloc.0 (label) -- locals: label, button
+    il.op(0x06).i4(10).i4(10).tok(0x73, pointCtor).tok(0x6F, setLoc)
+    il.op(0x06).tok(0x72, 0x70000000 | a.US('Clicks: 0')).tok(0x6F, setText)
+    il.op(0x02).op(0x06).tok(0x7D, fLabel)
+    il.tok(0x73, btnCtor).op(0x0B)
+    il.op(0x07).i4(10).i4(50).tok(0x73, pointCtor).tok(0x6F, setLoc)
+    il.op(0x07).tok(0x72, 0x70000000 | a.US('Click me')).tok(0x6F, setText)
+    clickTok = 0x06000002
+    il.op(0x07).op(0x02); il.c += bytes([0xFE, 0x06]) + struct.pack('<I', clickTok); il.tok(0x73, ehCtor).tok(0x6F, addClick)
+    il.op(0x02).tok(0x28, getControls).op(0x06).tok(0x6F, cadd)
+    il.op(0x02).tok(0x28, getControls).op(0x07).tok(0x6F, cadd)
+    il.op(0x2A)
+    loc = bytes([0x07, 2]) + bytes(cls(tLabel)) + bytes(cls(tButton))
+    a.sigs.append(loc); locTok = 0x11000000 | len(a.sigs)
+    mCtor = a.method(tMain, 0x1806, '.ctor', [0x20, 0, VOID], body(il.done(), 8, locTok))
+    # OnClick(object, EventArgs)
+    il = IL()
+    il.op(0x02).op(0x02).tok(0x7B, fCount).i4(1).op(0x58).tok(0x7D, fCount)
+    il.op(0x02).tok(0x7B, fLabel).tok(0x72, 0x70000000 | a.US('Clicks: '))
+    il.op(0x02).tok(0x7B, fCount).tok(0x28, itoa).tok(0x28, concat).tok(0x6F, setText).op(0x2A)
+    mClick = a.method(tMain, 0x86, 'OnClick', bytes([0x20, 2, VOID, OBJ]) + bytes(cls(R(mscorlib, 'System', 'EventArgs'))), body(il.done(), 8))
+    assert mClick == clickTok, hex(mClick)
+    il = IL(); il.tok(0x73, mCtor).tok(0x28, appRun).op(0x2A)
+    a.method(tProg, 0x96, 'Main', [0x00, 0, VOID], body(il.done(), 8))
+    return a
+
 if __name__ == '__main__':
-    open(sys.argv[1], 'wb').write(build(demo()))
+    open(sys.argv[1], 'wb').write(build(winforms_demo() if len(sys.argv) > 2 and sys.argv[2] == 'wf' else demo()))

@@ -22,7 +22,6 @@ import android.widget.LinearLayout;
 
 import com.unixroot.win10.core.GuiHost;
 import com.unixroot.win10.core.Surface;
-import com.unixroot.win10.core.Win32Gui;
 
 /** Android implementation of the emulated top-level Win32 window: a bitmap-backed view plus a key bar. */
 final class NativeWindow extends LinearLayout implements Desktop.Closeable {
@@ -102,14 +101,14 @@ final class NativeWindow extends LinearLayout implements Desktop.Closeable {
     }
 
     final BmpSurface surface;
-    final Win32Gui gui;
+    final GuiHost.Input gui;
     final int hwnd;
     final View screen;
     private final Desktop d;
     WinFrame frame;
     private volatile boolean closedByGuest;
 
-    NativeWindow(final Desktop desk, Win32Gui g, int h, int cw, int ch) {
+    NativeWindow(final Desktop desk, GuiHost.Input g, int h, int cw, int ch) {
         super(desk.act);
         d = desk; gui = g; hwnd = h;
         surface = new BmpSurface(cw, ch);

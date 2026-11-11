@@ -25,7 +25,7 @@ public class GTest {
     java.io.File root=new java.io.File(exe.getParentFile(),"C_root"); root.mkdirs();
     final Win32Gui[] gui=new Win32Gui[1];
     GuiHost host=new GuiHost(){
-      public HostWindow createWindow(Win32Gui gg,int hwnd,String title,int cw,int ch){ topHwnd=hwnd; top=new S(cw,ch); System.out.println("createWindow "+title+" "+cw+"x"+ch);
+      public HostWindow createWindow(GuiHost.Input gg,int hwnd,String title,int cw,int ch){ topHwnd=hwnd; top=new S(cw,ch); System.out.println("createWindow "+title+" "+cw+"x"+ch);
         return new HostWindow(){ public Surface surface(){return top;} public void setTitle(String t){} public void setVisible(boolean v){} public void close(){ System.out.println("host close"); } }; }
       public Surface createSurface(int w,int h){ return new S(w,h); }
       public void messageBox(String t,String x){ System.out.println("[MsgBox] "+t+": "+x); }
