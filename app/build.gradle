@@ -8,7 +8,7 @@ android {
         applicationId 'com.unixroot.win10'
         minSdkVersion 26
         targetSdkVersion 33
-        versionCode (System.getenv("GITHUB_RUN_NUMBER") ?: "1") as int
+        versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
         versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
     }
 
